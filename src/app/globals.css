@@ -1,0 +1,136 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 60 67% 91%; /* #F5F5DC Light Beige */
+    --foreground: 40 10% 20%; /* Dark Brown/Grey for text on beige */
+
+    --card: 60 60% 94%; /* Slightly whiter beige for cards */
+    --card-foreground: 40 10% 20%;
+
+    --popover: 60 60% 94%;
+    --popover-foreground: 40 10% 20%;
+
+    --primary: 76 44% 53%; /* #A7C44C Muted Olive Green */
+    --primary-foreground: 76 44% 10%; /* Darker Olive for text on primary */
+
+    --secondary: 76 44% 85%; /* Lighter Olive */
+    --secondary-foreground: 76 44% 20%; /* Darker Olive for text on secondary */
+
+    --muted: 60 30% 88%; /* Lighter beige/grey for muted elements */
+    --muted-foreground: 60 10% 45%; /* Darker muted text */
+
+    --accent: 25 76% 44%; /* #D2691E Earthy Orange */
+    --accent-foreground: 25 76% 95%; /* Light Cream for text on orange */
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 60 20% 80%; /* Slightly darker beige for borders */
+    --input: 60 25% 86%; /* Slightly darker beige for input backgrounds */
+    --ring: 76 44% 60%; /* Focus ring - Olive */
+
+    --radius: 0.5rem;
+
+    /* Sidebar Specific Theme */
+    --sidebar-background: 76 25% 35%; /* Darker Olive/Brown */
+    --sidebar-foreground: 76 25% 90%; /* Light text for sidebar */
+    --sidebar-primary: 25 76% 50%; /* Accent orange for active items in sidebar */
+    --sidebar-primary-foreground: 25 76% 95%;
+    --sidebar-accent: 76 25% 45%; /* Hover state for sidebar items */
+    --sidebar-accent-foreground: 76 25% 95%;
+    --sidebar-border: 76 25% 30%;
+    --sidebar-ring: 25 76% 55%; /* Accent orange for focus ring in sidebar */
+
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+  }
+
+  .dark {
+    /* Keeping dark mode mostly default shadcn, can be adjusted if needed */
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 76 44% 53%; /* Muted Olive Green */
+    --primary-foreground: 76 44% 10%;
+
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+
+    --accent: 25 76% 44%; /* Earthy Orange */
+    --accent-foreground: 25 76% 95%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 76 44% 60%; /* Olive for focus rings */
+
+    /* Dark Sidebar Specific Theme */
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 60 5% 95.9%;
+    --sidebar-primary: 25 76% 50%; /* Accent orange for active items */
+    --sidebar-primary-foreground: 25 76% 95%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 60 5% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 25 76% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Ensure sidebar text is legible */
+[data-sidebar="sidebar"] {
+  color: hsl(var(--sidebar-foreground));
+}
+[data-sidebar="sidebar"] [data-sidebar="menu-button"] {
+  color: hsl(var(--sidebar-foreground));
+}
+[data-sidebar="sidebar"] [data-sidebar="menu-button"]:hover {
+  background-color: hsl(var(--sidebar-accent));
+  color: hsl(var(--sidebar-accent-foreground));
+}
+[data-sidebar="sidebar"] [data-sidebar="menu-button"][data-active="true"] {
+  background-color: hsl(var(--sidebar-primary));
+  color: hsl(var(--sidebar-primary-foreground));
+}
+[data-sidebar="sidebar"] [data-sidebar="group-label"] {
+ color: hsl(var(--sidebar-foreground) / 0.7);
+}
+
+/* Attempt to hide Genkit dev panel */
+#genkit-dev-panel {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  width: 0px !important;
+  height: 0px !important;
+  position: absolute !important; /* Added for extra measure */
+  top: -9999px !important; /* Move off-screen */
+  left: -9999px !important; /* Move off-screen */
+  pointer-events: none !important;
+  z-index: -1 !important; /* Push behind other content */
+}
