@@ -267,16 +267,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return;
     }
 
+    // Clear any existing timeout first
+    if (authTimeoutRef.current) { 
+      clearTimeout(authTimeoutRef.current); 
+      authTimeoutRef.current = null;
+    }
 
-    setIsSwitchingAccountState(true); setLoadingState(true);
-    if (authTimeoutRef.current) { clearTimeout(authTimeoutRef.current); }
-    authTimeoutRef.current = setTimeout(() => {
-      if (loadingStateRef.current) {
-        console.warn("[AuthContext] signInWithGoogleCb - TIMEOUT! Auth process took too long.");
-        setLoadingState(false); setIsSwitchingAccountState(false);
-        setErrorState(new Error("Google sign-in process timed out."));
-        toast({title: "Tiempo de Espera Agotado", description:"El inicio de sesión con Google tardó demasiado. Inténtalo de nuevo.", variant:"destructive"});
-      }
+    setIsSwitchingAccountState(true); 
+    setLoadingState(true);
+    
+    // Set a timeout for the Google sign-in process specifically
+    const signInTimeout = setTimeout(() => {
+      console.warn("[AuthContext] signInWithGoogleCb - TIMEOUT! Auth process took too long.");
+      setLoadingState(false); 
+      setIsSwitchingAccountState(false);
+      setErrorState(new Error("Google sign-in process timed out."));
+      toast({title: "Tiempo de Espera Agotado", description:"El inicio de sesión con Google tardó demasiado. Inténtalo de nuevo.", variant:"destructive"});
     }, AUTH_TIMEOUT_DURATION);
 
     const provider = new GoogleAuthProvider();
@@ -284,15 +290,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const result = await signInWithPopup(auth, provider);
       const firebaseUserFromResult = result.user;
       console.log("[AuthContext] signInWithGoogleCb - Google sign-in successful, UID:", firebaseUserFromResult.uid.substring(0,5));
-      if (authTimeoutRef.current) { clearTimeout(authTimeoutRef.current); authTimeoutRef.current = null; }
+      
+      // Clear the sign-in timeout since we succeeded
+      clearTimeout(signInTimeout);
+      
       toast({title: "Inicio de Sesión con Google Exitoso"});
-      // User state will be updated by onAuthStateChanged, triggering profile fetch etc.
+      
+      // Don't set loading states here - let onAuthStateChanged handle the profile loading
+      // The loading state will be managed by performFullUpdate
+      
     } catch (e: any) {
-      if (authTimeoutRef.current) { clearTimeout(authTimeoutRef.current); authTimeoutRef.current = null; }
+      clearTimeout(signInTimeout);
       console.error("[AuthContext] signInWithGoogleCb - Error:", e);
-      toast({ title: "Error de Google", description: `No se pudo iniciar sesión con Google: ${e.message}. Código: ${e.code || 'N/A'}`, variant: "destructive"});
-      setErrorState(e);
-      setIsSwitchingAccountState(false); setLoadingState(false);
+      
+      // Only show error if it's not a user cancellation
+      if (e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request') {
+        toast({ title: "Error de Google", description: `No se pudo iniciar sesión con Google: ${e.message}. Código: ${e.code || 'N/A'}`, variant: "destructive"});
+        setErrorState(e);
+      }
+      
+      setIsSwitchingAccountState(false); 
+      setLoadingState(false);
     }
   }, [toast]);
 
@@ -323,17 +341,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsSwitchingAccountState(true);
     setErrorState(null);
 
-    if (authTimeoutRef.current) { clearTimeout(authTimeoutRef.current); authTimeoutRef.current = null; }
+    // Clear any existing timeout and set a new one
+    if (authTimeoutRef.current) { 
+      clearTimeout(authTimeoutRef.current); 
+      authTimeoutRef.current = null; 
+    }
+    
+    let timeoutCleared = false;
     authTimeoutRef.current = setTimeout(() => {
-      if (loadingStateRef.current) {
+      if (!timeoutCleared && loadingStateRef.current) {
         console.warn(`[AuthContext] performFullUpdate - TIMEOUT! Process took too long for user: ${currentUser ? currentUser.uid.substring(0,5) : "null"}`);
-        // Avoid race conditions by checking ref
-        if (loadingStateRef.current) {
-            setLoadingState(false);
-            setIsSwitchingAccountState(false);
-            setErrorState(new Error("User profile and membership update timed out."));
-            toast({title: "Error de Carga", description:"La actualización del perfil y membresía tardó demasiado.", variant:"destructive"});
-        }
+        timeoutCleared = true;
+        
+        setLoadingState(false);
+        setIsSwitchingAccountState(false);
+        setErrorState(new Error("User profile and membership update timed out."));
+        toast({
+          title: "Error de Carga", 
+          description: "La actualización del perfil tardó demasiado. Intenta refrescar la página.", 
+          variant: "destructive"
+        });
       }
     }, AUTH_TIMEOUT_DURATION);
 
@@ -363,13 +390,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setUserProfileState(null); 
       await determineActiveMembershipCallback(null); 
       setErrorState(e);
-      toast({title: "Error Interno", description: `Ocurrió un error procesando tu información: ${e.message || 'Desconocido'}.`, variant: "destructive"});
+      toast({
+        title: "Error Interno", 
+        description: `Ocurrió un error procesando tu información: ${e.message || 'Desconocido'}.`, 
+        variant: "destructive"
+      });
     } finally {
-      if (authTimeoutRef.current) {
+      // Ensure timeout is cleared and loading states are reset
+      if (authTimeoutRef.current && !timeoutCleared) {
         clearTimeout(authTimeoutRef.current);
         authTimeoutRef.current = null;
+        timeoutCleared = true;
         console.log(`[AuthContext] performFullUpdate - Timeout cleared in finally block for user: ${currentUser ? currentUser.uid.substring(0,5) : "null"}.`);
       }
+      
+      // Always reset loading states in finally block
       setLoadingState(false);
       setIsSwitchingAccountState(false);
       console.log(`[AuthContext] performFullUpdate - FINALLY. Loading states set to false for user: ${currentUser ? currentUser.uid.substring(0,5) : "null"}. loadingState: false, isSwitchingAccountState: false`);
