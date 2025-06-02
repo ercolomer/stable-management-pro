@@ -162,16 +162,60 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const userDocRef = doc(db, "users", firebaseUserToFetch.uid);
       const userDocSnap = await getDoc(userDocRef);
+      
       if (userDocSnap.exists()) {
         console.log("[AuthContext] fetchUserProfile - Profile found for UID:", firebaseUserToFetch.uid.substring(0,5));
-        return userDocSnap.data() as UserProfile;
+        const existingProfile = userDocSnap.data() as UserProfile;
+        
+        // Update lastLoginAt for existing users
+        try {
+          await updateDoc(userDocRef, { lastLoginAt: Timestamp.now() });
+          console.log("[AuthContext] fetchUserProfile - Updated lastLoginAt for existing user");
+        } catch (updateError) {
+          console.warn("[AuthContext] fetchUserProfile - Failed to update lastLoginAt, but continuing:", updateError);
+        }
+        
+        return existingProfile;
       }
-      console.log("[AuthContext] fetchUserProfile - No profile found for UID:", firebaseUserToFetch.uid.substring(0,5));
-      return null;
+      
+      // If no profile exists, create a basic one automatically for new Google users
+      console.log("[AuthContext] fetchUserProfile - No profile found for UID:", firebaseUserToFetch.uid.substring(0,5), "- Creating basic profile");
+      
+      const basicUserProfile: UserProfile = {
+        uid: firebaseUserToFetch.uid,
+        email: firebaseUserToFetch.email || '',
+        displayName: firebaseUserToFetch.displayName || firebaseUserToFetch.email || 'Usuario',
+        photoURL: firebaseUserToFetch.photoURL || null,
+        role: null, // Will need to be set by user in profile page
+        dataAiHint: "person",
+        createdAt: Timestamp.now(),
+        lastLoginAt: Timestamp.now(),
+        // Stable-related fields will be null initially
+        stableId: null,
+        stableName: null,
+        requestedStableId: null,
+      };
+      
+      // Save the basic profile to Firestore
+      await setDoc(userDocRef, basicUserProfile, { merge: false });
+      console.log("[AuthContext] fetchUserProfile - Basic profile created for new user:", firebaseUserToFetch.uid.substring(0,5));
+      
+      toast({ 
+        title: "¡Bienvenido!", 
+        description: "Tu cuenta ha sido creada. Por favor, completa tu perfil seleccionando tu rol.", 
+        duration: 5000 
+      });
+      
+      return basicUserProfile;
+      
     } catch (e: any) {
-      toast({ title: "Error de Perfil", description: `No se pudo cargar tu perfil: ${e.message || 'Error desconocido'}. Código: ${e.code || 'N/A'}`, variant: "destructive"});
+      console.error("[AuthContext] fetchUserProfile - Error fetching/creating profile:", e);
+      toast({ 
+        title: "Error de Perfil", 
+        description: `No se pudo cargar o crear tu perfil: ${e.message || 'Error desconocido'}. Código: ${e.code || 'N/A'}`, 
+        variant: "destructive"
+      });
       setErrorState(e);
-      console.error("[AuthContext] fetchUserProfile - Error fetching profile:", e);
       return null;
     }
   }, [toast]);

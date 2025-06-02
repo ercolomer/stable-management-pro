@@ -1,4 +1,3 @@
-
 import type { Timestamp } from "firebase/firestore";
 
 export type UserRole = "jinete" | "jefe de cuadra";
@@ -14,6 +13,8 @@ export interface UserProfile {
   stableId: string | null; // ID de la cuadra única a la que pertenece
   stableName?: string | null; // Nombre denormalizado de la cuadra
   requestedStableId?: string | null; // ID de la cuadra a la que ha solicitado unirse
+  createdAt?: Timestamp; // Fecha de creación del perfil
+  lastLoginAt?: Timestamp; // Última fecha de inicio de sesión
   // Se elimina 'memberships'
 }
 
