@@ -1,0 +1,34 @@
+{
+  "timestamp": "2025-06-03T14:13:45.430Z",
+  "projectName": "Stable Management Pro",
+  "version": "1.0.0",
+  "firebaseProject": "stable-management-pro-89fdd",
+  "hostingUrl": "https://stable-management-pro-89fdd.web.app",
+  "githubRepo": "https://github.com/ercolomer/stable-management-pro",
+  "description": "Sistema de gestión de cuadras de caballos",
+  "dependencies": {
+    "framework": "Next.js 15",
+    "database": "Firebase Firestore",
+    "auth": "Firebase Auth",
+    "hosting": "Firebase Hosting",
+    "ui": "Tailwind CSS + shadcn/ui"
+  },
+  "features": [
+    "Autenticación con Google",
+    "Gestión de usuarios y roles",
+    "Gestión de cuadras",
+    "Gestión de caballos",
+    "Asignación de tareas",
+    "Panel de administración",
+    "Panel de jinetes"
+  ],
+  "structure": {
+    "src/app": "Páginas de la aplicación (App Router)",
+    "src/components": "Componentes React reutilizables",
+    "src/contexts": "Contextos de React (Auth)",
+    "src/lib": "Utilidades y configuración",
+    "src/types": "Definiciones de tipos TypeScript",
+    "public": "Archivos estáticos",
+    "scripts": "Scripts de utilidad"
+  }
+}
