@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from "react";
@@ -8,23 +7,24 @@ import * as z from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { signInWithEmailAndPassword, type Auth } from "firebase/auth";
 import { useRouter } from "next/navigation";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
-import { Separator } from "@/components/ui/separator";
 import { getFirebaseAuth, isFirebaseInitialized } from "@/lib/firebase/config";
+import { LoaderCircle } from "lucide-react";
+import { useTranslations } from 'next-intl';
+import { LanguageSelector } from "@/components/language-selector";
+import { Separator } from "@/components/ui/separator";
 
-const loginSchema = z.object({
-  email: z.string().email("Introduce un correo electrónico válido."),
-  password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres."),
+const TARGET_SWITCH_EMAIL_KEY = "hallconnect_switch_target_email";
+
+const createLoginSchema = (t: any) => z.object({
+  email: z.string().email(t('invalidCredentials')),
+  password: z.string().min(1, t('passwordRequired')),
 });
-
-type LoginFormValues = z.infer<typeof loginSchema>;
 
 const GoogleIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg viewBox="0 0 48 48" {...props}>
@@ -36,18 +36,21 @@ const GoogleIcon = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
-const TARGET_SWITCH_EMAIL_KEY = "hallconnect_switch_target_email"; // Define key consistently
-
-export default function LoginForm() {
+export function LoginForm() {
+  const t = useTranslations('auth');
+  const tCommon = useTranslations('common');
+  const { user, signInWithGoogle, signOut, loading: authLoading } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const { toast } = useToast();
-  const authContext = useAuth(); 
   const [firebaseAuthInstance, setFirebaseAuthInstance] = useState<Auth | null>(null);
   const [hasMounted, setHasMounted] = useState(false);
+  const [targetSwitchEmail, setTargetSwitchEmail] = useState<string>("");
+  const { toast } = useToast();
+  const router = useRouter();
 
-  const form = useForm<LoginFormValues>({
+  const loginSchema = createLoginSchema(t);
+  
+  const form = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
       email: "",
@@ -57,6 +60,17 @@ export default function LoginForm() {
 
   useEffect(() => {
     setHasMounted(true);
+    
+    // Detectar si hay un email objetivo para cambio de cuenta
+    if (typeof window !== 'undefined') {
+      const storedTargetEmail = localStorage.getItem(TARGET_SWITCH_EMAIL_KEY);
+      if (storedTargetEmail) {
+        setTargetSwitchEmail(storedTargetEmail);
+        form.setValue("email", storedTargetEmail);
+        console.log('[LoginForm] Email objetivo detectado:', storedTargetEmail);
+      }
+    }
+    
     if (isFirebaseInitialized()) {
       setFirebaseAuthInstance(getFirebaseAuth());
     } else {
@@ -68,174 +82,283 @@ export default function LoginForm() {
       }, 100);
       return () => clearInterval(interval);
     }
-  }, []);
+  }, [form]);
 
-
+  // Redirect if already authenticated (but not if adding another account)
   useEffect(() => {
-    if (!firebaseAuthInstance || !hasMounted || !form) return;
-
-    const targetEmail = localStorage.getItem(TARGET_SWITCH_EMAIL_KEY);
-    if (targetEmail && typeof targetEmail === 'string' && targetEmail.trim() !== "" && targetEmail !== "null") {
-      form.setValue("email", targetEmail, { shouldValidate: true });
+    if (user) {
+      // Check if we're trying to add another account by looking at the URL params or if we have a target switch email
+      const urlParams = new URLSearchParams(window.location.search);
+      const isAddingAccount = urlParams.get('addAccount') === 'true';
+      const hasTargetEmail = !!targetSwitchEmail;
+      
+      if (!isAddingAccount && !hasTargetEmail) {
+        console.log('[LoginForm] User already authenticated, redirecting to home');
+        router.push('/');
+      } else {
+        console.log('[LoginForm] User authenticated but adding account or switching, staying on login');
+      }
     }
-    // Always remove the key after attempting to read it to prevent it from affecting future logins
-    localStorage.removeItem(TARGET_SWITCH_EMAIL_KEY);
+  }, [user, router, targetSwitchEmail]);
 
-  }, [firebaseAuthInstance, form, hasMounted]);
+  // Don't render if user is already authenticated and not adding/switching accounts
+  if (user) {
+    const urlParams = new URLSearchParams(window.location.search);
+    const isAddingAccount = urlParams.get('addAccount') === 'true';
+    const hasTargetEmail = !!targetSwitchEmail;
+    
+    if (!isAddingAccount && !hasTargetEmail) {
+      return null;
+    }
+  }
 
-
-  const onSubmit = async (data: LoginFormValues) => {
+  async function onSubmit(values: z.infer<typeof loginSchema>) {
     if (!firebaseAuthInstance) {
-      setError("Servicio de autenticación no está listo. Intenta de nuevo en un momento.");
-      toast({ title: "Error", description: "Servicio de autenticación no está listo.", variant: "destructive" });
+      toast({
+        variant: "destructive",
+        title: tCommon('error'),
+        description: t('firebaseConfigError'),
+      });
       return;
     }
+
     setIsLoading(true);
-    setError(null);
+
     try {
-      await signInWithEmailAndPassword(firebaseAuthInstance, data.email, data.password);
-      toast({
-        title: "Inicio de Sesión Exitoso",
-        description: "Bienvenido de nuevo.",
-      });
-      // Navigation is handled by AuthContext
-    } catch (err) {
-      console.error("Error de inicio de sesión:", err);
-      let errorMessage = "Ocurrió un error al iniciar sesión. Inténtalo de nuevo.";
-      if (err instanceof Error && 'code' in err) {
-        const firebaseError = err as { code: string; message: string };
-        if (firebaseError.code === "auth/user-not-found" || firebaseError.code === "auth/wrong-password" || firebaseError.code === "auth/invalid-credential") {
-          errorMessage = "Correo electrónico o contraseña incorrectos.";
-        }
+      const userCredential = await signInWithEmailAndPassword(firebaseAuthInstance, values.email, values.password);
+      
+      console.log('[LoginForm] Login successful:', userCredential.user.uid);
+      
+      // Limpiar el email objetivo después del login exitoso
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem(TARGET_SWITCH_EMAIL_KEY);
       }
-      setError(errorMessage);
+      
       toast({
-        title: "Error de Inicio de Sesión",
-        description: errorMessage,
+        title: t('googleSignInSuccess'),
+        description: `${tCommon('welcome')}, ${userCredential.user.email}`,
+      });
+
+      // Navigation will be handled by the useAuth hook
+      
+    } catch (error: any) {
+      console.error('[LoginForm] Login error:', error);
+      
+      let errorMessage = t('loginError');
+      
+      // Handle specific Firebase auth errors
+      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+        errorMessage = t('invalidCredentials');
+      } else if (error.code === 'auth/too-many-requests') {
+        errorMessage = 'Demasiados intentos fallidos. Intenta más tarde.';
+      }
+      
+      toast({
         variant: "destructive",
+        title: tCommon('error'),
+        description: errorMessage,
       });
     } finally {
       setIsLoading(false);
     }
-  };
+  }
 
   const handleGoogleSignIn = async () => {
-    if (!firebaseAuthInstance) {
-       setError("Servicio de autenticación no está listo. Intenta de nuevo en un momento.");
-       toast({ title: "Error", description: "Servicio de autenticación no está listo.", variant: "destructive" });
-      return;
-    }
     setIsGoogleLoading(true);
-    setError(null);
     try {
-      await authContext.signInWithGoogle();
-      // Navigation is handled by AuthContext
-    } catch (err) {
-      console.error("Error de inicio de sesión con Google:", err);
-      setError("No se pudo iniciar sesión con Google. Inténtalo de nuevo.");
+      await signInWithGoogle();
+      console.log('[LoginForm] Google sign-in initiated successfully');
+      
+      // Limpiar el email objetivo después del login con Google
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem(TARGET_SWITCH_EMAIL_KEY);
+      }
+    } catch (err: any) {
+      console.error("Error de login con Google:", err);
+      
+      // Handle specific error cases
+      if (err.code === 'auth/popup-closed-by-user') {
+        return; // User closed popup, don't show error
+      } else if (err.code === 'auth/cancelled-popup-request') {
+        return; // User cancelled, don't show error
+      }
+      
       toast({
-        title: "Error de Inicio de Sesión con Google",
-        description: "No se pudo iniciar sesión con Google. Inténtalo de nuevo.",
         variant: "destructive",
+        title: t('googleSignInError'),
+        description: err.message || t('googleSignInError'),
       });
     } finally {
       setIsGoogleLoading(false);
     }
   };
 
-  const LoadingLoginUI = (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-2xl">Iniciar Sesión</CardTitle>
-        <CardDescription>Accede a tu cuenta de HallConnect.</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col items-center justify-center space-y-2 p-8">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-muted-foreground text-sm">Inicializando servicios...</p>
-      </CardContent>
-    </Card>
-  );
+  const handleSignOutCurrent = async () => {
+    try {
+      await signOut();
+      console.log('[LoginForm] Signed out current user for account switching');
+    } catch (error) {
+      console.error('[LoginForm] Error signing out:', error);
+    }
+  };
 
-  if (!hasMounted || !firebaseAuthInstance) {
-    return LoadingLoginUI;
+  // Check if we're adding an account
+  const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const isAddingAccount = urlParams.get('addAccount') === 'true';
+
+  if (!hasMounted || !firebaseAuthInstance || authLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="absolute top-4 right-4">
+          <LanguageSelector />
+        </div>
+        <Card className="w-full max-w-md">
+          <CardHeader className="space-y-1">
+            <CardTitle className="text-2xl font-bold text-center">Connected Stable</CardTitle>
+            <CardDescription className="text-center">
+              {t('initializingServices')}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col items-center justify-center space-y-2 p-8">
+            <LoaderCircle className="h-8 w-8 animate-spin text-primary" />
+            <p className="text-muted-foreground text-sm">{t('initializingServices')}</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-2xl">Iniciar Sesión</CardTitle>
-        <CardDescription>Accede a tu cuenta de HallConnect.</CardDescription>
-      </CardHeader>
-      <form onSubmit={form.handleSubmit(onSubmit)}>
-        <CardContent className="space-y-4">
-          {error && (
-            <Alert variant="destructive">
-              <AlertTitle>Error</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
+    <div className="flex min-h-screen items-center justify-center">
+      <div className="absolute top-4 right-4">
+        <LanguageSelector />
+      </div>
+      <Card className="w-full max-w-md">
+        <CardHeader className="space-y-1">
+          <CardTitle className="text-2xl font-bold text-center">Connected Stable</CardTitle>
+          <CardDescription className="text-center">
+            {isAddingAccount ? t('addAnotherAccount') : (targetSwitchEmail ? `${t('loginAs')} ${targetSwitchEmail}` : t('login'))}
+          </CardDescription>
+          {isAddingAccount && user && (
+            <div className="bg-muted/50 rounded-lg p-3 mt-3">
+              <p className="text-sm text-muted-foreground text-center mb-2">
+                Currently signed in as: <span className="font-medium">{user.email}</span>
+              </p>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="w-full" 
+                onClick={handleSignOutCurrent}
+              >
+                {t('useAnotherAccount')}
+              </Button>
+            </div>
           )}
-          <div className="space-y-2">
-            <Label htmlFor="email">Correo Electrónico</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="tu@correo.com"
-              {...form.register("email")}
-              disabled={isLoading || isGoogleLoading || !firebaseAuthInstance}
-            />
-            {form.formState.errors.email && (
-              <p className="text-sm text-destructive">{form.formState.errors.email.message}</p>
-            )}
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="password">Contraseña</Label>
-            <Input
-              id="password"
-              type="password"
-              placeholder="********"
-              {...form.register("password")}
-              disabled={isLoading || isGoogleLoading || !firebaseAuthInstance}
-            />
-            {form.formState.errors.password && (
-              <p className="text-sm text-destructive">{form.formState.errors.password.message}</p>
-            )}
-          </div>
-          <div className="text-sm">
-            <Link href="/password-reset" className="font-medium text-primary hover:underline">
-              ¿Olvidaste tu contraseña?
-            </Link>
-          </div>
-        </CardContent>
-        <CardFooter className="flex flex-col gap-4">
-          <Button type="submit" className="w-full" disabled={isLoading || isGoogleLoading || !firebaseAuthInstance}>
-            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Iniciar Sesión
-          </Button>
-          
-          <div className="relative w-full">
-            <Separator className="my-2" />
-            <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">
-              O CONTINUAR CON
-            </span>
-          </div>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="email">{t('email')}</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder={t('emailPlaceholder')}
+                {...form.register("email")}
+                disabled={isLoading || isGoogleLoading || !!targetSwitchEmail}
+                className={targetSwitchEmail ? "bg-muted" : ""}
+              />
+              {form.formState.errors.email && (
+                <p className="text-sm text-red-500">{form.formState.errors.email.message}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">{t('password')}</Label>
+              <Input
+                id="password"
+                type="password"
+                placeholder={t('passwordPlaceholder')}
+                {...form.register("password")}
+                disabled={isLoading || isGoogleLoading}
+                autoFocus={!!targetSwitchEmail}
+              />
+              {form.formState.errors.password && (
+                <p className="text-sm text-red-500">{form.formState.errors.password.message}</p>
+              )}
+            </div>
+            <Button 
+              type="submit" 
+              className="w-full" 
+              disabled={isLoading || isGoogleLoading}
+            >
+              {isLoading ? (
+                <>
+                  <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+                  {tCommon('loading')}...
+                </>
+              ) : (
+                t('login')
+              )}
+            </Button>
+          </form>
 
-          <Button variant="outline" className="w-full" type="button" onClick={handleGoogleSignIn} disabled={isLoading || isGoogleLoading || !firebaseAuthInstance}>
-            {isGoogleLoading ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          {!targetSwitchEmail && (
+            <>
+              <div className="relative w-full my-4">
+                <Separator />
+                <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">
+                  o
+                </span>
+              </div>
+
+              <Button 
+                variant="outline" 
+                className="w-full" 
+                type="button" 
+                onClick={handleGoogleSignIn} 
+                disabled={isLoading || isGoogleLoading}
+              >
+                {isGoogleLoading ? (
+                  <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <GoogleIcon className="mr-2 h-5 w-5" />
+                )}
+                Google
+              </Button>
+            </>
+          )}
+
+          <div className="mt-4 text-center text-sm">
+            {targetSwitchEmail ? (
+              <Button 
+                variant="link" 
+                className="p-0 h-auto text-sm text-primary hover:underline"
+                onClick={() => {
+                  if (typeof window !== 'undefined') {
+                    localStorage.removeItem(TARGET_SWITCH_EMAIL_KEY);
+                    setTargetSwitchEmail("");
+                    form.setValue("email", "");
+                  }
+                }}
+              >
+                {t('useAnotherAccount')}
+              </Button>
             ) : (
-              <GoogleIcon className="mr-2 h-5 w-5" />
+              <Link href="/forgot-password" className="text-primary hover:underline">
+                {t('forgotPassword')}
+              </Link>
             )}
-            Google
-          </Button>
-
-          <p className="text-center text-sm text-muted-foreground">
-            ¿No tienes una cuenta?{" "}
-            <Link href="/register" className="font-medium text-primary hover:underline">
-              Regístrate
-            </Link>
-          </p>
-        </CardFooter>
-      </form>
-    </Card>
+          </div>
+          
+          {!targetSwitchEmail && (
+            <div className="mt-2 text-center text-sm">
+              {t('noAccount')}{" "}
+              <Link href="/register" className="text-primary hover:underline">
+                {t('signUp')}
+              </Link>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }

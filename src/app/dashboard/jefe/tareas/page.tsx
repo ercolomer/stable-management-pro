@@ -22,12 +22,21 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-
+import { useTranslations } from "next-intl";
+import StableWrapper from "@/components/stable-wrapper";
 
 export default function GestionTareasPage() {
   const db = getDb(); 
   const { userProfile, loading: authLoading, activeStableId } = useAuth();
   const { toast } = useToast();
+  const t = useTranslations("common");
+  const tTasks = useTranslations("tasks");
+
+  // Estado para evitar errores de DOM durante desmontaje
+  const [isMounted, setIsMounted] = useState(true);
+  
+  // NUEVO: Estado para el filtro de fecha
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
 
   const [jinetes, setJinetes] = useState<UserProfile[]>([]);
   const [tasks, setTasks] = useState<DailyTask[]>([]);
@@ -41,24 +50,63 @@ export default function GestionTareasPage() {
   const [dueDate, setDueDate] = useState<Date | undefined>(undefined);
   const [editingTask, setEditingTask] = useState<DailyTask | null>(null);
 
+  // NUEVO: Función para filtrar tareas por fecha seleccionada
+  const filteredTasks = useMemo(() => {
+    if (!selectedDate || tasks.length === 0) return tasks;
+    
+    const selectedDateStart = startOfDay(selectedDate);
+    const selectedDateEnd = new Date(selectedDateStart);
+    selectedDateEnd.setDate(selectedDateEnd.getDate() + 1);
+    
+    return tasks.filter(task => {
+      if (!task.dueDate) return false; // Solo mostrar tareas con fecha de entrega
+      
+      const taskDate = task.dueDate instanceof Timestamp ? task.dueDate.toDate() : new Date(task.dueDate);
+      const taskDateStart = startOfDay(taskDate);
+      
+      return taskDateStart.getTime() === selectedDateStart.getTime();
+    });
+  }, [tasks, selectedDate]);
+
+  // NUEVO: Estadísticas para el día seleccionado
+  const dayStats = useMemo(() => {
+    const completed = filteredTasks.filter(task => task.isCompleted).length;
+    const pending = filteredTasks.filter(task => !task.isCompleted).length;
+    const overdue = filteredTasks.filter(task => {
+      if (task.isCompleted) return false;
+      const taskDate = task.dueDate instanceof Timestamp ? task.dueDate.toDate() : new Date(task.dueDate!);
+      return taskDate < startOfDay(new Date());
+    }).length;
+    
+    return { total: filteredTasks.length, completed, pending, overdue };
+  }, [filteredTasks]);
+
   useEffect(() => {
-    if (authLoading) return;
+    setIsMounted(true);
+    
+    if (authLoading || !isMounted) return;
 
     const stableIdToUse = activeStableId;
 
     if (!stableIdToUse) {
-      setError("No estás asignado a ninguna cuadra activa.");
-      setIsLoading(false);
+      if (isMounted) {
+        setError(tTasks('notAssignedToStable'));
+        setIsLoading(false);
+      }
       return;
     }
     
     if (userProfile && userProfile.role !== "jefe de cuadra") {
-      setError("Acceso denegado. Debes ser jefe de cuadra.");
-      setIsLoading(false);
+      if (isMounted) {
+        setError(tTasks('accessDeniedChief'));
+        setIsLoading(false);
+      }
       return;
     }
 
     const fetchData = async () => {
+      if (!isMounted) return;
+      
       setIsLoading(true);
       setError(null);
       console.log(`[DEBUG] GestionTareasPage (Jefe) - fetchData Diagnostics:`);
@@ -81,9 +129,9 @@ export default function GestionTareasPage() {
           console.log("GestionTareasPage (Jefe) - Querying users collection for members:", { uids: allMemberIds });
           const usersQuery = query(collection(db, "users"), where("uid", "in", allMemberIds));
           const usersSnapshot = await getDocs(usersQuery);
-          setJinetes(usersSnapshot.docs.map(d => d.data() as UserProfile));
+          if (isMounted) setJinetes(usersSnapshot.docs.map(d => d.data() as UserProfile));
         } else {
-          setJinetes([]);
+          if (isMounted) setJinetes([]);
         }
 
         console.log("GestionTareasPage (Jefe) - Querying tasks collection:", { collection: "tasks", where: `stableId == ${stableIdToUse}` });
@@ -97,23 +145,33 @@ export default function GestionTareasPage() {
           dueDate: d.data().dueDate ? (d.data().dueDate as Timestamp).toDate() : undefined,
           completedAt: d.data().completedAt ? (d.data().completedAt as Timestamp).toDate() : undefined,
         } as DailyTask));
-        setTasks(fetchedTasks);
+        
+        if (isMounted) setTasks(fetchedTasks);
         
       } catch (err: any) {
         console.error("Error al cargar datos:", err);
-        setError(`No se pudo cargar la información necesaria. ${err.message || ''} Código: ${err.code || 'N/A'}`);
-        if (toast) {
-          toast({ title: "Error de Carga", description: `No se pudo cargar la información de tareas. Código: ${err.code || 'N/A'}. Mensaje: ${err.message || ''}`, variant: "destructive", duration: 7000 });
+        if (isMounted) {
+          setError(`${tTasks('errorLoadingData')} ${err.message || ''} Código: ${err.code || 'N/A'}`);
+          if (toast) {
+            toast({ title: t('error'), description: `${tTasks('errorLoadingData')} Código: ${err.code || 'N/A'}. Mensaje: ${err.message || ''}`, variant: "destructive", duration: 7000 });
+          }
         }
       } finally {
-        setIsLoading(false);
+        if (isMounted) setIsLoading(false);
       }
     };
+    
     if (stableIdToUse) fetchData();
-    else setIsLoading(false);
-  }, [userProfile, authLoading, activeStableId, toast, db]);
+    else if (isMounted) setIsLoading(false);
+    
+    return () => {
+      setIsMounted(false);
+    };
+  }, [userProfile, authLoading, activeStableId, toast, db, tTasks, isMounted]);
 
   const handleAssignmentChange = (value: string) => {
+    if (!isMounted) return;
+    
     if (value === "ANYONE_IN_STABLE" || value === "ALL_MEMBERS_INDIVIDUALLY") {
       setAssignmentScope(value as AssignmentScope);
       setAssignedTo(null);
@@ -124,6 +182,8 @@ export default function GestionTareasPage() {
   };
 
   const resetForm = () => {
+    if (!isMounted) return;
+    
     setDescription("");
     setAssignedTo(undefined); 
     setAssignmentScope('ANYONE_IN_STABLE'); 
@@ -133,14 +193,16 @@ export default function GestionTareasPage() {
 
   const handleSubmitTask = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!isMounted) return; // Guard temprano
+    
     const stableIdToUse = activeStableId;
 
     if (!description.trim()) { 
-      if(toast) toast({ title: "Error", description: "La descripción de la tarea es requerida.", variant: "destructive" });
+      if(isMounted && toast) toast({ title: t('error'), description: tTasks('taskDescriptionRequired'), variant: "destructive" });
       return;
     }
     if (!stableIdToUse) {
-        if(toast) toast({ title: "Error", description: "No se pudo determinar la cuadra para guardar la tarea.", variant: "destructive" });
+        if(isMounted && toast) toast({ title: t('error'), description: tTasks('stableNotDetermined'), variant: "destructive" });
         return;
     }
 
@@ -163,38 +225,46 @@ export default function GestionTareasPage() {
       completedAt: editingTask?.completedAt instanceof Timestamp ? editingTask.completedAt.toDate() : (editingTask?.completedAt instanceof Date ? editingTask.completedAt : undefined)
     };
 
-
     try {
       if (editingTask) {
         const taskRef = doc(db, "tasks", editingTask.id);
         await updateDoc(taskRef, { ...taskDataForFirestore, updatedAt: serverTimestamp() });
-        const finalTaskState = { ...editingTask, ...taskDataForStateUpdate, updatedAt: new Date() } as DailyTask;
-        setTasks(tasks.map(t => t.id === editingTask.id ? finalTaskState : t).sort((a,b) => {
-          const dateA = a.createdAt instanceof Timestamp ? a.createdAt.toDate() : a.createdAt;
-          const dateB = b.createdAt instanceof Timestamp ? b.createdAt.toDate() : b.createdAt;
-          return new Date(dateB).getTime() - new Date(dateA).getTime();
-        }));
-        if(toast) toast({ title: "Tarea Actualizada", description: "La tarea ha sido modificada." });
+        
+        if (isMounted) {
+          const finalTaskState = { ...editingTask, ...taskDataForStateUpdate, updatedAt: new Date() } as DailyTask;
+          setTasks(tasks.map(t => t.id === editingTask.id ? finalTaskState : t).sort((a,b) => {
+            const dateA = a.createdAt instanceof Timestamp ? a.createdAt.toDate() : a.createdAt;
+            const dateB = b.createdAt instanceof Timestamp ? b.createdAt.toDate() : b.createdAt;
+            return new Date(dateB).getTime() - new Date(dateA).getTime();
+          }));
+          if(toast) toast({ title: tTasks('taskUpdated'), description: tTasks('taskModified') });
+          resetForm();
+        }
       } else {
         const docRef = await addDoc(collection(db, "tasks"), { ...taskDataForFirestore, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
-        const finalTaskState = { ...taskDataForStateUpdate, id: docRef.id, createdAt: new Date(), updatedAt: new Date() } as DailyTask;
-        setTasks([{ ...finalTaskState }, ...tasks].sort((a,b) => {
-          const dateA = a.createdAt instanceof Timestamp ? a.createdAt.toDate() : a.createdAt;
-          const dateB = b.createdAt instanceof Timestamp ? b.createdAt.toDate() : b.createdAt;
-          return new Date(dateB).getTime() - new Date(dateA).getTime();
-        }));
-        if(toast) toast({ title: "Tarea Creada", description: "La nueva tarea ha sido asignada." });
+        
+        if (isMounted) {
+          const finalTaskState = { ...taskDataForStateUpdate, id: docRef.id, createdAt: new Date(), updatedAt: new Date() } as DailyTask;
+          setTasks([{ ...finalTaskState }, ...tasks].sort((a,b) => {
+            const dateA = a.createdAt instanceof Timestamp ? a.createdAt.toDate() : a.createdAt;
+            const dateB = b.createdAt instanceof Timestamp ? b.createdAt.toDate() : b.createdAt;
+            return new Date(dateB).getTime() - new Date(dateA).getTime();
+          }));
+          if(toast) toast({ title: tTasks('taskCreated'), description: tTasks('newTaskAssigned') });
+          resetForm();
+        }
       }
-      resetForm();
     } catch (err: any) {
       console.error("Error al guardar tarea:", err);
-      if(toast) toast({ title: "Error", description: `No se pudo guardar la tarea. ${err.message || ''} Código: ${err.code || 'N/A'}`, variant: "destructive" });
+      if(isMounted && toast) toast({ title: t('error'), description: `${tTasks('errorSaving')} ${err.message || ''} Código: ${err.code || 'N/A'}`, variant: "destructive" });
     } finally {
-      setIsSubmitting(false);
+      if (isMounted) setIsSubmitting(false);
     }
   };
 
   const handleEditTask = (task: DailyTask) => {
+    if (!isMounted) return;
+    
     setEditingTask(task);
     setDescription(task.description);
     setAssignmentScope(task.assignmentScope || (task.assignedTo ? 'SPECIFIC_USER' : 'ANYONE_IN_STABLE'));
@@ -203,21 +273,26 @@ export default function GestionTareasPage() {
   };
 
   const handleDeleteTask = async (taskId: string) => {
+    if (!isMounted) return; // Guard temprano
+    
     setIsSubmitting(true);
     try {
       await deleteDoc(doc(db, "tasks", taskId));
-      setTasks(tasks.filter(t => t.id !== taskId));
-      if(toast) toast({ title: "Tarea Eliminada", description: "La tarea ha sido eliminada." });
+      if (isMounted) {
+        setTasks(tasks.filter(t => t.id !== taskId));
+        if(toast) toast({ title: tTasks('taskDeleted'), description: tTasks('taskRemoved') });
+      }
     } catch (err: any) {
       console.error("Error al eliminar tarea:", err);
-      if(toast) toast({ title: "Error", description: `No se pudo eliminar la tarea. ${err.message || ''} Código: ${err.code || 'N/A'}`, variant: "destructive" });
+      if(isMounted && toast) toast({ title: t('error'), description: `${tTasks('errorDeleting')} ${err.message || ''} Código: ${err.code || 'N/A'}`, variant: "destructive" });
     } finally {
-      setIsSubmitting(false);
+      if (isMounted) setIsSubmitting(false);
     }
   };
   
   const toggleTaskCompletion = async (task: DailyTask) => {
-    if (!userProfile) return;
+    if (!userProfile || !isMounted) return; // Guard temprano
+    
     const newCompletedStatus = !task.isCompleted;
     const newCompletedBy = newCompletedStatus ? userProfile.uid : null;
     const newCompletedAt = newCompletedStatus ? serverTimestamp() : null;
@@ -239,13 +314,16 @@ export default function GestionTareasPage() {
           completedAt: newCompletedAt, 
           updatedAt: serverTimestamp() 
       });
-      setTasks(tasks.map(t => t.id === task.id ? taskForStateUpdate : t));
-      if(toast) toast({ title: "Estado de Tarea Actualizado" });
+      
+      if (isMounted) {
+        setTasks(tasks.map(t => t.id === task.id ? taskForStateUpdate : t));
+        if(toast) toast({ title: tTasks('taskStatusUpdated') });
+      }
     } catch (error: any) {
       console.error("Error al actualizar estado de tarea:", error);
-      if(toast) toast({ title: "Error", description: `No se pudo actualizar el estado. ${error.message || ''} Código: ${error.code || 'N/A'}`, variant: "destructive" });
+      if(isMounted && toast) toast({ title: t('error'), description: `${tTasks('errorUpdatingStatus')} ${error.message || ''} Código: ${error.code || 'N/A'}`, variant: "destructive" });
     } finally {
-      setIsSubmitting(false);
+      if (isMounted) setIsSubmitting(false);
     }
   };
 
@@ -261,44 +339,150 @@ export default function GestionTareasPage() {
   
   const currentSelectValue = assignmentScope === 'SPECIFIC_USER' ? (assignedTo || "") : assignmentScope;
 
+  // Protección temprana contra renderizado durante desmontaje
+  if (!isMounted) {
+    return null;
+  }
+
   if (authLoading || !activeStableId ) { 
     return <div className="flex h-full items-center justify-center"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
   }
   
   if (!activeStableId && !authLoading) {
     return (
-      <Alert variant="default" className="max-w-lg mx-auto">
-        <AlertCircle className="h-4 w-4" />
-        <AlertTitle>No tienes una cuadra activa</AlertTitle>
-        <AlertDescription>
-        Por favor, <Link href="/profile" className="text-primary underline">crea o selecciona una cuadra</Link> para gestionar tareas.
-        </AlertDescription>
-      </Alert>
+      <StableWrapper>
+        <Alert variant="default" className="max-w-lg mx-auto">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>{tTasks('noActiveStable')}</AlertTitle>
+          <AlertDescription>
+          {tTasks('pleaseJoin')} <Link href="/profile" className="text-primary underline">{tTasks('createOrSelectStable')}</Link> {tTasks('toManageTasks')}
+          </AlertDescription>
+        </Alert>
+      </StableWrapper>
     );
   }
   
   if (error && !isLoading) { 
-    return <Alert variant="destructive" className="max-w-lg mx-auto"><AlertCircle className="h-4 w-4" /><AlertTitle>Error</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>;
+    return (
+      <StableWrapper>
+        <Alert variant="destructive" className="max-w-lg mx-auto">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>{t('error')}</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      </StableWrapper>
+    );
   }
 
-
   return (
-    <div className="container mx-auto py-8 space-y-8">
+    <StableWrapper className="container mx-auto py-8 space-y-8">
+      {/* NUEVO: Selector de fecha para filtrar tareas */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CalendarIcon className="h-6 w-6" />
+            Filtrar Tareas por Día
+          </CardTitle>
+          <CardDescription>
+            Selecciona un día para ver solo las tareas programadas para esa fecha
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
+            <div className="flex-1">
+              <Label htmlFor="dateFilter">Fecha Seleccionada</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    id="dateFilter"
+                    variant="outline"
+                    className="w-full md:w-auto justify-start text-left font-normal"
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {format(selectedDate, "EEEE, dd 'de' MMMM, yyyy", { locale: es })}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={(date) => date && setSelectedDate(startOfDay(date))}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            
+            {/* Estadísticas del día */}
+            <div className="flex gap-2 flex-wrap">
+              <div className="bg-blue-50 dark:bg-blue-900/30 px-3 py-1 rounded-lg text-sm">
+                <span className="font-medium text-blue-700 dark:text-blue-300">Total: {dayStats.total}</span>
+              </div>
+              <div className="bg-green-50 dark:bg-green-900/30 px-3 py-1 rounded-lg text-sm">
+                <span className="font-medium text-green-700 dark:text-green-300">Completadas: {dayStats.completed}</span>
+              </div>
+              <div className="bg-yellow-50 dark:bg-yellow-900/30 px-3 py-1 rounded-lg text-sm">
+                <span className="font-medium text-yellow-700 dark:text-yellow-300">Pendientes: {dayStats.pending}</span>
+              </div>
+              {dayStats.overdue > 0 && (
+                <div className="bg-red-50 dark:bg-red-900/30 px-3 py-1 rounded-lg text-sm">
+                  <span className="font-medium text-red-700 dark:text-red-300">Vencidas: {dayStats.overdue}</span>
+                </div>
+              )}
+            </div>
+          </div>
+          
+          {/* Botones de navegación rápida */}
+          <div className="flex gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSelectedDate(startOfDay(new Date()))}
+              className={selectedDate.toDateString() === new Date().toDateString() ? "bg-primary text-primary-foreground" : ""}
+            >
+              Hoy
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const tomorrow = new Date();
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                setSelectedDate(startOfDay(tomorrow));
+              }}
+            >
+              Mañana
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const nextWeek = new Date();
+                nextWeek.setDate(nextWeek.getDate() + 7);
+                setSelectedDate(startOfDay(nextWeek));
+              }}
+            >
+              Próxima semana
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <PlusCircle className="h-6 w-6" />
-            {editingTask ? "Editar Tarea" : "Crear Nueva Tarea"}
+            {editingTask ? tTasks('editTask') : tTasks('createNewTask')}
           </CardTitle>
           <CardDescription>
-            {editingTask ? "Modifica los detalles de la tarea." : "Asigna nuevas tareas."}
+            {editingTask ? tTasks('modifyTaskDetails') : tTasks('assignNewTasks')}
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmitTask}>
           <CardContent className="space-y-4">
             <div>
-              <Label htmlFor="descriptionJefeTareas">Descripción de la Tarea</Label>
-              <Textarea id="descriptionJefeTareas" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ej: Limpiar equipo de salto" required disabled={isSubmitting} />
+              <Label htmlFor="descriptionJefeTareas">{tTasks('taskDescription')}</Label>
+              <Textarea id="descriptionJefeTareas" value={description} onChange={(e) => setDescription(e.target.value)} placeholder={tTasks('taskDescriptionPlaceholder')} required disabled={isSubmitting} />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -344,7 +528,7 @@ export default function GestionTareasPage() {
           <CardFooter className="flex justify-end gap-2">
             {editingTask && <Button type="button" variant="outline" onClick={resetForm} disabled={isSubmitting}>Cancelar Edición</Button>}
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              <Loader2 className={`mr-2 h-4 w-4 animate-spin ${isSubmitting ? 'opacity-100' : 'opacity-0 w-0 mr-0'}`} />
               {editingTask ? "Guardar Cambios" : "Crear Tarea"}
             </Button>
           </CardFooter>
@@ -355,14 +539,24 @@ export default function GestionTareasPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <ListChecks className="h-6 w-6" />
-            Tareas Asignadas
+            Tareas para {format(selectedDate, "EEEE, dd 'de' MMMM", { locale: es })}
           </CardTitle>
-          <CardDescription>Lista de todas las tareas actuales en la cuadra.</CardDescription>
+          <CardDescription>
+            {filteredTasks.length === 0 
+              ? `No hay tareas programadas para ${format(selectedDate, "dd/MM/yyyy", { locale: es })}`
+              : `Mostrando ${filteredTasks.length} tarea${filteredTasks.length === 1 ? '' : 's'} para el día seleccionado`
+            }
+          </CardDescription>
         </CardHeader>
         <CardContent>
         { isLoading ? (<div className="flex justify-center items-center p-8"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>) :
-          tasks.length === 0 ? (
-            <p className="text-muted-foreground">No hay tareas asignadas por el momento.</p>
+          filteredTasks.length === 0 ? (
+            <div className="text-center py-8 space-y-2">
+              <p className="text-muted-foreground">No hay tareas programadas para este día.</p>
+              <p className="text-sm text-muted-foreground">
+                Puedes crear una nueva tarea arriba o seleccionar otro día en el filtro.
+              </p>
+            </div>
           ) : (
             <Table>
               <TableHeader>
@@ -377,7 +571,7 @@ export default function GestionTareasPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {tasks.sort((a,b) => new Date(b.createdAt instanceof Timestamp ? b.createdAt.toDate() : b.createdAt).getTime() - new Date(a.createdAt instanceof Timestamp ? a.createdAt.toDate() : a.createdAt).getTime()).map((task) => {
+                {filteredTasks.sort((a,b) => new Date(b.createdAt instanceof Timestamp ? b.createdAt.toDate() : b.createdAt).getTime() - new Date(a.createdAt instanceof Timestamp ? a.createdAt.toDate() : a.createdAt).getTime()).map((task) => {
                   const taskDueDate = task.dueDate ? (task.dueDate instanceof Timestamp ? task.dueDate.toDate() : new Date(task.dueDate)) : null;
                   const isOverdue = !task.isCompleted && taskDueDate && taskDueDate < startOfDay(new Date());
                   return (
@@ -436,7 +630,7 @@ export default function GestionTareasPage() {
                           <AlertDialogFooter>
                             <AlertDialogCancel disabled={isSubmitting}>Cancelar</AlertDialogCancel>
                             <AlertDialogAction onClick={() => handleDeleteTask(task.id)} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">
-                               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                               <Loader2 className={`mr-2 h-4 w-4 animate-spin ${isSubmitting ? 'opacity-100' : 'opacity-0 w-0 mr-0'}`} />
                               Eliminar
                             </AlertDialogAction>
                           </AlertDialogFooter>
@@ -450,7 +644,7 @@ export default function GestionTareasPage() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </StableWrapper>
   );
 }
 

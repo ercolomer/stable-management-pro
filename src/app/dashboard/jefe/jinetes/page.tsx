@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState, useMemo, useCallback } from "react"; 
@@ -19,11 +18,17 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
+import StableWrapper from "@/components/stable-wrapper";
 
 export default function GestionJinetesPage() {
   const db = getDb(); 
   const { userProfile, loading: authLoading, refreshUserProfile, activeStableId } = useAuth();
   const { toast } = useToast();
+  const t = useTranslations("common");
+
+  // Estado para evitar errores de DOM durante desmontaje
+  const [isMounted, setIsMounted] = useState(true);
 
   const [jinetesEnCuadra, setJinetesEnCuadra] = useState<UserProfile[]>([]);
   const [solicitudesPendientes, setSolicitudesPendientes] = useState<PendingMember[]>([]);
@@ -36,19 +41,25 @@ export default function GestionJinetesPage() {
   const [isExpelDialogOpen, setIsExpelDialogOpen] = useState(false);
 
   const fetchJinetesYSolicitudes = useCallback(async () => {
+    if (!isMounted) return; // Guard temprano
+    
     const currentStableId = activeStableId;
 
     if (!currentStableId) {
-      if (!authLoading) { 
+      if (!authLoading && isMounted) { 
           setError("No estás asignado a ninguna cuadra activa.");
           setJinetesEnCuadra([]);
           setSolicitudesPendientes([]);
       }
-      setIsLoadingData(false);
+      if (isMounted) setIsLoadingData(false);
       return;
     }
-    setIsLoadingData(true);
-    setError(null);
+    
+    if (isMounted) {
+      setIsLoadingData(true);
+      setError(null);
+    }
+    
     console.log(`[DEBUG] GestionJinetesPage (Jefe) - fetchJinetesYSolicitudes Diagnostics:`);
     console.log(`  Authenticated User UID (request.auth.uid): ${userProfile?.uid || 'N/A (profile not loaded)'}`);
     console.log(`  Querying for Stable ID (currentStableId): ${currentStableId}`);
@@ -60,15 +71,17 @@ export default function GestionJinetesPage() {
       const stableDocSnap = await getDoc(stableDocRef);
 
       if (!stableDocSnap.exists()) {
-        setError("No se encontró la cuadra activa.");
-        setJinetesEnCuadra([]);
-        setSolicitudesPendientes([]);
-        setIsLoadingData(false);
+        if (isMounted) {
+          setError("No se encontró la cuadra activa.");
+          setJinetesEnCuadra([]);
+          setSolicitudesPendientes([]);
+          setIsLoadingData(false);
+        }
         return;
       }
 
       const stableData = stableDocSnap.data() as Stable;
-      setSolicitudesPendientes(stableData.pendingMembers || []);
+      if (isMounted) setSolicitudesPendientes(stableData.pendingMembers || []);
 
       const ownerId = stableData.ownerId; 
       const jineteIdsAprobados = stableData.members.filter(memberId => memberId !== ownerId);
@@ -80,36 +93,51 @@ export default function GestionJinetesPage() {
         const fetchedJinetes = perfilesDocs
           .filter(docSnap => docSnap.exists())
           .map(docSnap => docSnap.data() as UserProfile);
-        setJinetesEnCuadra(fetchedJinetes);
+        if (isMounted) setJinetesEnCuadra(fetchedJinetes);
       } else {
-        setJinetesEnCuadra([]);
+        if (isMounted) setJinetesEnCuadra([]);
       }
     } catch (err: any) {
       console.error("Error al cargar jinetes y solicitudes:", err);
-      setError(`No se pudo cargar la lista de jinetes y/o solicitudes. ${err.message || ''} Código: ${err.code || 'N/A'}`);
-      if(toast) toast({ title: "Error de Carga", description: `No se pudo cargar la lista. Código: ${err.code || 'N/A'}. Mensaje: ${err.message || ''}`, variant: "destructive", duration: 7000});
+      if (isMounted) {
+        setError(`No se pudo cargar la lista de jinetes y/o solicitudes. ${err.message || ''} Código: ${err.code || 'N/A'}`);
+        if(toast) toast({ title: "Error de Carga", description: `No se pudo cargar la lista. Código: ${err.code || 'N/A'}. Mensaje: ${err.message || ''}`, variant: "destructive", duration: 7000});
+      }
     } finally {
-      setIsLoadingData(false);
+      if (isMounted) setIsLoadingData(false);
     }
-  }, [activeStableId, authLoading, userProfile, toast, db]); 
+  }, [activeStableId, authLoading, userProfile, toast, db, isMounted]); 
 
   useEffect(() => {
-    if (authLoading) return; 
+    setIsMounted(true);
+    
+    if (authLoading || !isMounted) return; 
 
     if (!userProfile || userProfile.role !== "jefe de cuadra") {
-      setError("Acceso denegado. Debes ser jefe de cuadra.");
-      setIsLoadingData(false);
+      if (isMounted) {
+        setError("Acceso denegado. Debes ser jefe de cuadra.");
+        setIsLoadingData(false);
+      }
       return;
     }
     if (userProfile.role === "jefe de cuadra" && !activeStableId) {
-      setError("Jefe de cuadra sin cuadra activa. Ve a tu perfil para crear o seleccionar una cuadra.");
-      setIsLoadingData(false);
+      if (isMounted) {
+        setError("Jefe de cuadra sin cuadra activa. Ve a tu perfil para crear o seleccionar una cuadra.");
+        setIsLoadingData(false);
+      }
       return;
     }
+    
     fetchJinetesYSolicitudes();
-  }, [userProfile, authLoading, fetchJinetesYSolicitudes, activeStableId]); 
+    
+    return () => {
+      setIsMounted(false);
+    };
+  }, [userProfile, authLoading, fetchJinetesYSolicitudes, activeStableId, isMounted]); 
 
   const handleManageRequest = async (pendingJinete: PendingMember, approve: boolean) => {
+    if (!isMounted) return; // Guard temprano
+    
     const currentStableId = activeStableId;
     if (!currentStableId || !userProfile) return;
 
@@ -137,11 +165,13 @@ export default function GestionJinetesPage() {
           });
           await batch.commit();
           
-          const userDocSnap = await getDoc(userRef); 
-          if(userDocSnap.exists()){
-                setJinetesEnCuadra(prev => [...prev, userDocSnap.data() as UserProfile]);
+          if (isMounted) {
+            const userDocSnap = await getDoc(userRef); 
+            if(userDocSnap.exists()){
+                  setJinetesEnCuadra(prev => [...prev, userDocSnap.data() as UserProfile]);
+            }
+            if(toast) toast({ title: "Jinete Aprobado", description: `${pendingJinete.displayName || 'El jinete'} ha sido añadido.` });
           }
-          if(toast) toast({ title: "Jinete Aprobado", description: `${pendingJinete.displayName || 'El jinete'} ha sido añadido.` });
         } else { 
           batch.update(stableRef, {
             pendingMembers: updatedPendingMembers
@@ -150,27 +180,31 @@ export default function GestionJinetesPage() {
               requestedStableId: null 
           });
           await batch.commit();
-          if(toast) toast({ title: "Solicitud Rechazada", description: `La solicitud de ${pendingJinete.displayName || 'el jinete'} ha sido rechazada.` });
+          if(isMounted && toast) toast({ title: "Solicitud Rechazada", description: `La solicitud de ${pendingJinete.displayName || 'el jinete'} ha sido rechazada.` });
         }
-        setSolicitudesPendientes(updatedPendingMembers);
+        if (isMounted) setSolicitudesPendientes(updatedPendingMembers);
     } catch (err: any) {
       console.error("Error al gestionar solicitud:", err);
-      if(toast) toast({ title: "Error", description: `No se pudo procesar la solicitud. ${err.message || ''} Código: ${err.code || 'N/A'}`, variant: "destructive" });
+      if(isMounted && toast) toast({ title: "Error", description: `No se pudo procesar la solicitud. ${err.message || ''} Código: ${err.code || 'N/A'}`, variant: "destructive" });
     } finally {
-      setIsProcessing(false);
+      if (isMounted) setIsProcessing(false);
     }
   };
 
   const handleOpenExpelDialog = (jinete: UserProfile) => {
+    if (!isMounted) return;
+    
     setJineteToExpel(jinete);
     setExpelConfirmationText("");
     setIsExpelDialogOpen(true);
   };
 
   const handleExpelJinete = async () => {
+    if (!isMounted) return; // Guard temprano
+    
     const currentStableId = activeStableId;
     if (!jineteToExpel || !currentStableId || !userProfile || expelConfirmationText.toLowerCase() !== "echar") {
-      if(toast) toast({ title: "Error", description: "Texto de confirmación incorrecto o ID de cuadra no encontrado.", variant: "destructive" });
+      if(isMounted && toast) toast({ title: "Error", description: "Texto de confirmación incorrecto o ID de cuadra no encontrado.", variant: "destructive" });
       return;
     }
     setIsProcessing(true);
@@ -189,19 +223,26 @@ export default function GestionJinetesPage() {
       });
       await batch.commit();
 
-      setJinetesEnCuadra(prev => prev.filter(j => j.uid !== jineteToExpel.uid));
-      if(toast) toast({ title: "Jinete Expulsado", description: `${jineteToExpel.displayName} ha sido expulsado de la cuadra.` });
+      if (isMounted) {
+        setJinetesEnCuadra(prev => prev.filter(j => j.uid !== jineteToExpel.uid));
+        if(toast) toast({ title: "Jinete Expulsado", description: `${jineteToExpel.displayName} ha sido expulsado de la cuadra.` });
+        setIsExpelDialogOpen(false);
+      }
     } catch (err: any) {
       console.error("Error al expulsar jinete:", err);
-      if(toast) toast({ title: "Error", description: `No se pudo expulsar al jinete. ${err.message || ''} Código: ${err.code || 'N/A'}`, variant: "destructive" });
+      if(isMounted && toast) toast({ title: "Error", description: `No se pudo expulsar al jinete. ${err.message || ''} Código: ${err.code || 'N/A'}`, variant: "destructive" });
     } finally {
-      setIsProcessing(false);
-      setIsExpelDialogOpen(false);
-      setJineteToExpel(null);
-      setExpelConfirmationText("");
+      if (isMounted) {
+        setIsProcessing(false);
+        setIsExpelDialogOpen(false);
+      }
     }
   };
 
+  // Protección temprana contra renderizado durante desmontaje
+  if (!isMounted) {
+    return null;
+  }
 
   if (authLoading || !activeStableId) { 
     return <div className="flex h-full items-center justify-center"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
@@ -209,22 +250,32 @@ export default function GestionJinetesPage() {
 
   if (!activeStableId && !authLoading) {
      return (
-        <Alert variant="default" className="max-w-lg mx-auto">
-            <AlertCircle className="h-4 w-4" />
-            <AlertTitle>No tienes una cuadra activa</AlertTitle>
-            <AlertDescription>
-            Por favor, <Link href="/profile" className="text-primary underline">crea o selecciona una cuadra</Link> para gestionar jinetes.
-            </AlertDescription>
-        </Alert>
+        <StableWrapper>
+          <Alert variant="default" className="max-w-lg mx-auto">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>No tienes una cuadra activa</AlertTitle>
+              <AlertDescription>
+              Por favor, <Link href="/profile" className="text-primary underline">crea o selecciona una cuadra</Link> para gestionar jinetes.
+              </AlertDescription>
+          </Alert>
+        </StableWrapper>
     );
   }
   
   if (error && !isLoadingData) { 
-    return <Alert variant="destructive" className="max-w-lg mx-auto"><AlertCircle className="h-4 w-4" /><AlertTitle>Error</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>;
+    return (
+      <StableWrapper>
+        <Alert variant="destructive" className="max-w-lg mx-auto">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      </StableWrapper>
+    );
   }
   
   return (
-    <div className="container mx-auto py-8 space-y-8">
+    <StableWrapper className="container mx-auto py-8 space-y-8">
       {isLoadingData && <div className="flex h-full items-center justify-center"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>}
       
       {!isLoadingData && solicitudesPendientes.length > 0 && (
@@ -328,13 +379,13 @@ export default function GestionJinetesPage() {
                 disabled={isProcessing || expelConfirmationText.toLowerCase() !== "echar"}
                 className="bg-destructive hover:bg-destructive/90"
               >
-                {isProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                <Loader2 className={`mr-2 h-4 w-4 animate-spin ${isProcessing ? 'opacity-100' : 'opacity-0 w-0 mr-0'}`} />
                 Expulsar
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
       )}
-    </div>
-);
+    </StableWrapper>
+  );
 }

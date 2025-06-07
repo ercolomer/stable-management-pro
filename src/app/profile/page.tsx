@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useAuth } from "@/contexts/auth-context";
@@ -17,9 +16,12 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getDb } from "@/lib/firebase/config"; 
 import { doc, setDoc, Timestamp, updateDoc, arrayUnion, arrayRemove, writeBatch } from "firebase/firestore";
+import { useTranslations } from 'next-intl';
 
 
 export default function ProfilePage() {
+  const t = useTranslations('profile');
+  const tCommon = useTranslations('common');
   const authContext = useAuth();
   const { 
     user, 
@@ -53,11 +55,11 @@ export default function ProfilePage() {
 
   const handleSaveRole = async () => {
     if (!user) { 
-        toast({ title: "Error", description: "Usuario no encontrado.", variant: "destructive" });
+        toast({ title: t('errorSavingRole'), description: t('userNotFound'), variant: "destructive" });
         return;
     }
     if (!selectedRoleForNewUser) {
-      toast({ title: "Error", description: "Por favor, selecciona un rol.", variant: "destructive" });
+      toast({ title: tCommon('error'), description: t('selectRoleFirst'), variant: "destructive" });
       return;
     }
     setIsSavingRole(true);
@@ -75,12 +77,12 @@ export default function ProfilePage() {
       };
 
       await setDoc(userDocRef, userProfileDataToSave, { merge: true });
-      toast({ title: "Rol Guardado", description: `Tu rol ha sido establecido como ${selectedRoleForNewUser.replace("_", " ")}.` });
+      toast({ title: t('roleSaved'), description: `${t('roleEstablished')} ${selectedRoleForNewUser.replace("_", " ")}.` });
       await refreshUserProfile(); 
       if (setNavigateToPath) setNavigateToPath('/profile'); // Re-evaluate navigation
     } catch (error: any) {
       console.error("ProfilePage: Error saving role/creating profile:", error);
-      toast({ title: "Error", description: `No se pudo guardar el rol. ${error.message || ''} Código: ${error.code || 'N/A'}`, variant: "destructive" });
+      toast({ title: tCommon('error'), description: `${t('errorSavingRole')} ${error.message || ''} ${tCommon('code')}: ${error.code || 'N/A'}`, variant: "destructive" });
     } finally {
       setIsSavingRole(false);
     }
@@ -98,14 +100,14 @@ export default function ProfilePage() {
   if (!user && activeSimulationRole) {
      return (
         <div className="container mx-auto max-w-md py-8 text-center">
-            <p className="text-muted-foreground">Cargando datos de simulación...</p>
+            <p className="text-muted-foreground">{t('loadingSimulation')}</p>
             <Loader2 className="mx-auto mt-4 h-8 w-8 animate-spin text-primary" />
         </div>
      );
   }
   
   if (!user) { 
-    return <div className="container mx-auto py-8 text-center"><p>Por favor, inicia sesión para ver tu perfil.</p></div>;
+    return <div className="container mx-auto py-8 text-center"><p>{t('pleaseSignIn')}</p></div>;
   }
 
   if (!userProfile || userProfile.role === null) { // User authenticated, but profile doc not found or role not set
@@ -113,19 +115,20 @@ export default function ProfilePage() {
       <div className="container mx-auto max-w-md py-8 space-y-6">
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl">¡Bienvenido, {userProfile?.displayName || user.displayName || user.email}!</CardTitle>
-            <CardDescription>Para continuar, por favor selecciona tu rol principal en HallConnect.</CardDescription>
+            <CardTitle className="text-xl">{t('welcome')} {userProfile?.displayName || user.displayName || user.email}!</CardTitle>
+            <CardDescription>{t('continueSelectRole')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <Label htmlFor="roleSelectProfilePage">Tu Rol Principal</Label>
+              <Label htmlFor="roleSelectProfilePage">{t('yourMainRole')}</Label>
               <Select onValueChange={(value) => setSelectedRoleForNewUser(value as UserRole)} value={selectedRoleForNewUser || undefined}>
                 <SelectTrigger id="roleSelectProfilePage" disabled={isSavingRole}>
-                  <SelectValue placeholder="Selecciona tu rol" />
+                  <SelectValue placeholder={t('selectRole')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="jinete">Jinete</SelectItem>
-                  <SelectItem value="jefe de cuadra">Jefe de Cuadra</SelectItem>
+                  <SelectItem value="jinete">{t('roleOptions.jinete')}</SelectItem>
+                  <SelectItem value="jefe de cuadra">{t('roleOptions.jefeDeQuadra')}</SelectItem>
+                  <SelectItem value="mozo de cuadra">{t('roleOptions.mozoDeCuadra')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -133,7 +136,7 @@ export default function ProfilePage() {
           <CardFooter>
             <Button onClick={handleSaveRole} disabled={isSavingRole || !selectedRoleForNewUser}>
               {isSavingRole && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Guardar Rol y Continuar
+              {t('saveAndContinue')}
             </Button>
           </CardFooter>
         </Card>
@@ -148,14 +151,14 @@ export default function ProfilePage() {
           <Avatar className="h-24 w-24 mb-4 ring-2 ring-primary ring-offset-2">
             <AvatarImage 
                 src={userProfile.photoURL || `https://placehold.co/100x100.png?text=${userProfile.displayName ? userProfile.displayName.substring(0,2).toUpperCase() : 'U'}`} 
-                alt={userProfile.displayName || "Avatar de usuario"} 
+                alt={userProfile.displayName || t('userAvatar')} 
                 data-ai-hint={userProfile.dataAiHint || "person portrait"}
             />
             <AvatarFallback className="text-3xl">{userProfile.displayName ? userProfile.displayName.substring(0,2).toUpperCase() : userProfile.email ? userProfile.email[0].toUpperCase() : 'U'}</AvatarFallback>
           </Avatar>
-          <CardTitle className="text-3xl">{userProfile.displayName} {activeSimulationRole ? `(Sim. ${activeSimulationRole.replace(/([A-Z])/g, ' $1').trim()})` : ""}</CardTitle>
+          <CardTitle className="text-3xl">{userProfile.displayName} {activeSimulationRole ? `(${tCommon('simulation')} ${activeSimulationRole.replace(/([A-Z])/g, ' $1').trim()})` : ""}</CardTitle>
           <CardDescription className="text-lg">{userProfile.email}</CardDescription>
-          {userProfile.role && <CardDescription className="text-md capitalize">Rol Principal: {userProfile.role.replace("_", " ")}</CardDescription>}
+          {userProfile.role && <CardDescription className="text-md capitalize">{t('mainRole')} {userProfile.role.replace("_", " ")}</CardDescription>}
         </CardHeader>
         
         <CardContent className="space-y-6">
@@ -164,24 +167,25 @@ export default function ProfilePage() {
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-xl">
                             <Building className="h-5 w-5 text-primary" />
-                            Tu Cuadra Actual: {userProfile.stableName}
+                            {t('currentStable')} {userProfile.stableName}
                         </CardTitle>
-                        <CardDescription>Código: <span className="font-mono">{userProfile.stableId}</span></CardDescription>
+                        <CardDescription>{t('stableCode')} <span className="font-mono">{userProfile.stableId}</span></CardDescription>
                     </CardHeader>
                     <CardFooter className="flex-col sm:flex-row gap-2 justify-start">
                          <Button 
                            onClick={() => {
-                             const targetPath = userProfile.role === 'jefe de cuadra' ? '/dashboard/jefe' : '/dashboard/jinete';
+                             const targetPath = userProfile.role === 'jefe de cuadra' ? '/dashboard/jefe' : 
+                                              userProfile.role === 'mozo de cuadra' ? '/dashboard/mozo' : '/dashboard/jinete';
                              if (setNavigateToPath) setNavigateToPath(targetPath);
                            }} 
                            disabled={isProcessingStableAction}
                            className="w-full sm:w-auto"
                          >
-                            <DoorOpen className="mr-2 h-4 w-4"/>Ir al Panel de Cuadra
+                            <DoorOpen className="mr-2 h-4 w-4"/>{t('goToStableDashboard')}
                         </Button>
                         <Button variant="outline" onClick={contextHandleLeaveStable} disabled={isProcessingStableAction} className="w-full sm:w-auto">
                             {isProcessingStableAction && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                            Abandonar Cuadra
+                            {t('leaveStable')}
                         </Button>
                     </CardFooter>
                 </Card>
@@ -191,10 +195,10 @@ export default function ProfilePage() {
                  <Card>
                     <CardHeader>
                         <CardTitle className="text-amber-700 dark:text-amber-500 flex items-center gap-2">
-                            <Loader2 className="h-5 w-5 animate-spin"/> Solicitud Pendiente
+                            <Loader2 className="h-5 w-5 animate-spin"/> {t('pendingRequest')}
                         </CardTitle>
                         <CardDescription>
-                        Tu solicitud para unirte a la cuadra con código <span className="font-mono">{userProfile.requestedStableId}</span> está pendiente de aprobación.
+                        {t('requestPendingDescription')} <span className="font-mono">{userProfile.requestedStableId}</span> {t('pendingApproval')}
                         </CardDescription>
                     </CardHeader>
                 </Card>
@@ -202,21 +206,21 @@ export default function ProfilePage() {
 
             {userProfile.role === 'jefe de cuadra' && !userProfile.stableId && (
               <Card>
-                <CardHeader><CardTitle>Crear Nueva Cuadra</CardTitle></CardHeader>
+                <CardHeader><CardTitle>{t('createNewStable')}</CardTitle></CardHeader>
                 <CardContent>
-                  <Label htmlFor="newStableNameProfilePage">Nombre de tu Cuadra</Label>
+                  <Label htmlFor="newStableNameProfilePage">{t('stableName')}</Label>
                   <Input 
                     id="newStableNameProfilePage" 
                     value={newStableNameState}
                     onChange={(e) => setNewStableNameState(e.target.value)} 
-                    placeholder="Ej: Rancho El Amanecer" 
+                    placeholder={t('stableNamePlaceholder')} 
                     disabled={isProcessingStableAction}
                   />
                 </CardContent>
                 <CardFooter>
                   <Button onClick={contextHandleCreateNewStable} disabled={isProcessingStableAction || !newStableNameState.trim()}>
                     {isProcessingStableAction && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                    Crear Cuadra
+                    {t('createStable')}
                   </Button>
                 </CardFooter>
               </Card>
@@ -224,14 +228,14 @@ export default function ProfilePage() {
             
              {userProfile && !userProfile.stableId && !userProfile.requestedStableId && (
               <Card>
-                <CardHeader><CardTitle>Unirse a Cuadra Existente</CardTitle></CardHeader>
+                <CardHeader><CardTitle>{t('joinExistingStable')}</CardTitle></CardHeader>
                 <CardContent>
-                  <Label htmlFor="joinStableCodeProfilePage">Código de la Cuadra</Label>
+                  <Label htmlFor="joinStableCodeProfilePage">{t('stableCodeInput')}</Label>
                   <Input 
                     id="joinStableCodeProfilePage" 
                     value={joinStableCodeState}
                     onChange={(e) => setJoinStableCodeState(e.target.value)} 
-                    placeholder="Introduce el código de 14 caracteres" 
+                    placeholder={t('stableCodePlaceholder')} 
                     disabled={isProcessingStableAction} 
                     maxLength={14}
                   />
@@ -239,7 +243,7 @@ export default function ProfilePage() {
                 <CardFooter>
                   <Button onClick={contextHandleJoinStableRequest} disabled={isProcessingStableAction || !joinStableCodeState.trim() || joinStableCodeState.length !== 14}>
                     {isProcessingStableAction && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                    Solicitar Unirse
+                    {t('requestJoin')}
                   </Button>
                 </CardFooter>
               </Card>
@@ -248,11 +252,11 @@ export default function ProfilePage() {
         <CardFooter className="border-t pt-6 flex flex-col sm:flex-row justify-between items-center gap-2">
              <Button asChild variant="outline" className="w-full sm:w-auto">
                 <Link href="/settings">
-                    <UserCog className="mr-2 h-4 w-4" /> Ajustes de Cuenta
+                    <UserCog className="mr-2 h-4 w-4" /> {t('accountSettings')}
                 </Link>
             </Button>
             <Button onClick={signOut} variant="ghost" className="w-full sm:w-auto text-destructive hover:text-destructive">
-                <LogOut className="mr-2 h-4 w-4" /> Cerrar Sesión
+                <LogOut className="mr-2 h-4 w-4" /> {t('signOut')}
             </Button>
         </CardFooter>
       </Card>

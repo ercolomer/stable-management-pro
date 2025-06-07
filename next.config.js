@@ -1,9 +1,16 @@
 // @ts-check
+const createNextIntlPlugin = require('next-intl/plugin');
+
+// Configurar next-intl para que funcione sin rutas dinámicas
+const withNextIntl = createNextIntlPlugin('./src/i18n.ts');
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'export',
-  trailingSlash: true,
+  experimental: {
+    serverActions: {
+      allowedOrigins: ["localhost:3000", "localhost:3001"]
+    }
+  },
   typescript: {
     ignoreBuildErrors: false,
   },
@@ -11,7 +18,6 @@ const nextConfig = {
     ignoreDuringBuilds: false,
   },
   images: {
-    unoptimized: true,
     remotePatterns: [
       {
         protocol: 'https',
@@ -21,34 +27,30 @@ const nextConfig = {
       },
     ],
   },
-  // Headers don't work with static export, so commented out
-  // async headers() {
-  //   return [
-  //     {
-  //       // Apply these headers to all routes in your application.
-  //       source: '/:path*', // Apply to all routes
-  //       headers: [
-  //         {
-  //           key: 'Content-Security-Policy',
-  //           value: "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://apis.google.com https://www.googletagmanager.com https://www.gstatic.com; object-src 'none'; base-uri 'self';"
-  //         }
-  //       ],
-  //     }
-  //   ]
-  // },
+  // Optimizaciones para Windows/OneDrive
+  webpack: (config, { isServer }) => {
+    // Configurar cache para evitar problemas de permisos
+    config.cache = {
+      type: 'memory'
+    };
+    
+    // Asegurar que los archivos JSON de traducción se incluyan
+    config.module.rules.push({
+      test: /\.json$/,
+      type: 'json',
+    });
+    
+    // Optimizaciones adicionales
+    config.watchOptions = {
+      ...config.watchOptions,
+      poll: 1000,
+      aggregateTimeout: 300,
+    };
+    
+    return config;
+  },
+  // Configuración del output
+  output: process.env.NODE_ENV === 'production' ? 'standalone' : undefined,
 };
 
-const pwaEnabled = false; // Explicitly false
-const pwaPluginConfig = {
-  dest: "public",
-};
-
-// Export an async function to allow dynamic import for ESM module
-module.exports = async (phase, { defaultConfig }) => {
-  const withPWAInit = (await import('@ducanh2912/next-pwa')).default;
-  const withPWA = withPWAInit({
-    ...pwaPluginConfig,
-    disable: !pwaEnabled
-  });
-  return pwaEnabled ? withPWA(nextConfig) : nextConfig;
-}; 
+module.exports = withNextIntl(nextConfig); 

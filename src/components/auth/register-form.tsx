@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from "react";
@@ -11,22 +10,25 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createUserWithEmailAndPassword, updateProfile, type Auth } from "firebase/auth";
 import { doc, setDoc, type Firestore } from "firebase/firestore";
-import { getDb, getFirebaseAuth, isFirebaseInitialized } from "@/lib/firebase/config";
+import { getFirebaseAuth, getDb, isFirebaseInitialized } from "@/lib/firebase/config";
 import type { UserProfile } from "@/types";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Loader2 } from "lucide-react";
-import { useAuth } from "@/contexts/auth-context";
 import { Separator } from "@/components/ui/separator";
+import { useTranslations } from 'next-intl';
+import { LanguageSelector } from "@/components/language-selector";
+import { useAuth } from "@/contexts/auth-context";
 
-const registerSchema = z.object({
-  displayName: z.string().min(3, "El nombre debe tener al menos 3 caracteres."),
-  email: z.string().email("Introduce un correo electrónico válido."),
-  password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres."),
+const createRegisterSchema = (t: any) => z.object({
+  displayName: z.string().min(3, t('nameMinLength')),
+  email: z.string().email(t('emailInvalid')),
+  password: z.string().min(6, t('passwordMinLength')),
 });
 
-type RegisterFormValues = z.infer<typeof registerSchema>;
+type RegisterFormValues = z.infer<ReturnType<typeof createRegisterSchema>>;
 
 const GoogleIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg viewBox="0 0 48 48" {...props}>
@@ -39,14 +41,32 @@ const GoogleIcon = (props: React.SVGProps<SVGSVGElement>) => (
 );
 
 export default function RegisterForm() {
+  const t = useTranslations('auth');
+  const tCommon = useTranslations('common');
+  const { user, signInWithGoogle, loading: authLoading } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
-  const authContext = useAuth();
   const [firebaseAuthInstance, setFirebaseAuthInstance] = useState<Auth | null>(null);
   const [dbInstance, setDbInstance] = useState<Firestore | null>(null);
   const [hasMounted, setHasMounted] = useState(false);
+  const router = useRouter();
+
+  const registerSchema = createRegisterSchema(t);
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (user) {
+      console.log('[RegisterForm] User already authenticated, redirecting to home');
+      router.push('/');
+    }
+  }, [user, router]);
+
+  // Don't render if user is already authenticated
+  if (user) {
+    return null;
+  }
 
   useEffect(() => {
     setHasMounted(true);
@@ -76,8 +96,9 @@ export default function RegisterForm() {
 
   const onSubmit = async (data: RegisterFormValues) => {
     if (!firebaseAuthInstance || !dbInstance) {
-      setError("Servicios de Firebase no están listos. Intenta de nuevo en un momento.");
-      toast({ title: "Error", description: "Servicios de Firebase no están listos.", variant: "destructive" });
+      const errorMsg = t('firebaseNotReady');
+      setError(errorMsg);
+      toast({ title: tCommon('error'), description: errorMsg, variant: "destructive" });
       return;
     }
 
@@ -115,13 +136,13 @@ export default function RegisterForm() {
         console.log("RegisterForm: Firestore profile document created successfully for UID:", firebaseUser.uid);
       } catch (firestoreError: any) {
         console.error("RegisterForm: Error creating Firestore profile document for UID:", firebaseUser.uid, firestoreError);
-        let firestoreErrorMessage = "Error al crear el perfil en la base de datos.";
+        let firestoreErrorMessage = t('profileCreateError');
         if (firestoreError.code === 'permission-denied') {
-          firestoreErrorMessage = "Error de permisos al crear el perfil en la base de datos. Verifica las reglas de Firestore.";
+          firestoreErrorMessage = t('permissionError');
         }
         setError(firestoreErrorMessage);
         toast({
-          title: "Error de Registro (DB)",
+          title: t('registerErrorDB'),
           description: firestoreErrorMessage,
           variant: "destructive",
         });
@@ -130,20 +151,26 @@ export default function RegisterForm() {
       }
       
       toast({
-        title: "Registro Exitoso",
-        description: "Tu cuenta ha sido creada. Serás redirigido.",
+        title: t('registerSuccess'),
+        description: t('completeProfile'),
+        duration: 3000,
       });
+
+      // La redirección será manejada automáticamente por AuthContext
+      // una vez que detecte al usuario autenticado
+      console.log("RegisterForm: Registration successful, AuthContext will handle redirection");
+      
     } catch (err: any) {
       console.error("RegisterForm: Error during Firebase Auth registration:", err);
-      let errorMessage = "Ocurrió un error al registrarse. Inténtalo de nuevo.";
+      let errorMessage = t('registerError');
        if (err.code === "auth/email-already-in-use") {
-          errorMessage = "Este correo electrónico ya está en uso.";
+          errorMessage = t('emailInUse');
        } else if (err.code === "auth/weak-password") {
-         errorMessage = "La contraseña es demasiado débil.";
+         errorMessage = t('weakPassword');
        }
       setError(errorMessage);
       toast({
-        title: "Error de Registro",
+        title: t('registerErrorTitle'),
         description: errorMessage,
         variant: "destructive",
       });
@@ -153,21 +180,37 @@ export default function RegisterForm() {
   };
 
   const handleGoogleSignUp = async () => {
-    if (!firebaseAuthInstance) {
-       setError("Servicios de Firebase no están listos. Intenta de nuevo en un momento.");
-       toast({ title: "Error", description: "Servicios de Firebase no están listos.", variant: "destructive" });
-      return;
-    }
     setIsGoogleLoading(true);
     setError(null);
     try {
-      await authContext.signInWithGoogle(); 
+      await signInWithGoogle();
+      console.log('[RegisterForm] Google sign-up initiated successfully');
+      
+      toast({
+        title: t('googleSignInSuccess'),
+        description: t('completeProfile'),
+        duration: 3000,
+      });
+      
+      // La redirección será manejada automáticamente por AuthContext
+      // una vez que detecte al usuario autenticado
+      console.log("RegisterForm: Google registration successful, AuthContext will handle redirection");
+      
     } catch (err: any) {
       console.error("Error de registro con Google:", err);
-      setError("No se pudo registrar con Google. Inténtalo de nuevo.");
+      let errorMsg = t('googleSignInError');
+      
+      // Handle specific error cases
+      if (err.code === 'auth/popup-closed-by-user') {
+        return; // User closed popup, don't show error
+      } else if (err.code === 'auth/cancelled-popup-request') {
+        return; // User cancelled, don't show error
+      }
+      
+      setError(errorMsg);
       toast({
-        title: "Error de Registro con Google",
-        description: err.message || "No se pudo registrar con Google. Inténtalo de nuevo.",
+        title: t('googleSignInError'),
+        description: err.message || errorMsg,
         variant: "destructive",
       });
     } finally {
@@ -178,12 +221,12 @@ export default function RegisterForm() {
   const LoadingRegisterUI = (
     <Card>
       <CardHeader>
-        <CardTitle className="text-2xl">Crear Cuenta</CardTitle>
-        <CardDescription>Únete a HallConnect y gestiona tu cuadra.</CardDescription>
+        <CardTitle className="text-2xl">{t('createAccount')}</CardTitle>
+        <CardDescription>{t('joinConnectedStable')}</CardDescription>
       </CardHeader>
        <CardContent className="flex flex-col items-center justify-center space-y-2 p-8">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-muted-foreground text-sm">Inicializando servicios...</p>
+          <p className="text-muted-foreground text-sm">{t('initializingServices')}</p>
       </CardContent>
     </Card>
   );
@@ -192,93 +235,98 @@ export default function RegisterForm() {
     return LoadingRegisterUI;
   }
 
-  if (!firebaseAuthInstance || !dbInstance) {
+  if (!firebaseAuthInstance || !dbInstance || authLoading) {
     return LoadingRegisterUI;
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-2xl">Crear Cuenta</CardTitle>
-        <CardDescription>Únete a HallConnect y gestiona tu cuadra.</CardDescription>
-      </CardHeader>
-      <form onSubmit={form.handleSubmit(onSubmit)}>
-        <CardContent className="space-y-4">
-          {error && (
-            <Alert variant="destructive">
-              <AlertTitle>Error</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-          <div className="space-y-2">
-            <Label htmlFor="displayName">Nombre Completo</Label>
-            <Input
-              id="displayName"
-              placeholder="Tu Nombre"
-              {...form.register("displayName")}
-              disabled={isLoading || isGoogleLoading || !firebaseAuthInstance}
-            />
-            {form.formState.errors.displayName && (
-              <p className="text-sm text-destructive">{form.formState.errors.displayName.message}</p>
+    <div className="flex min-h-screen items-center justify-center">
+      <div className="absolute top-4 right-4">
+        <LanguageSelector />
+      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-2xl">{t('createAccount')}</CardTitle>
+          <CardDescription>{t('joinConnectedStable')}</CardDescription>
+        </CardHeader>
+        <form onSubmit={form.handleSubmit(onSubmit)}>
+          <CardContent className="space-y-4">
+            {error && (
+              <Alert variant="destructive">
+                <AlertTitle>{tCommon('error')}</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
             )}
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="email">Correo Electrónico</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="tu@correo.com"
-              {...form.register("email")}
-              disabled={isLoading || isGoogleLoading || !firebaseAuthInstance}
-            />
-            {form.formState.errors.email && (
-              <p className="text-sm text-destructive">{form.formState.errors.email.message}</p>
-            )}
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="password">Contraseña</Label>
-            <Input
-              id="password"
-              type="password"
-              placeholder="Mínimo 6 caracteres"
-              {...form.register("password")}
-              disabled={isLoading || isGoogleLoading || !firebaseAuthInstance}
-            />
-            {form.formState.errors.password && (
-              <p className="text-sm text-destructive">{form.formState.errors.password.message}</p>
-            )}
-          </div>
-        </CardContent>
-        <CardFooter className="flex flex-col gap-4">
-          <Button type="submit" className="w-full" disabled={isLoading || isGoogleLoading || !firebaseAuthInstance}>
-            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Registrarse
-          </Button>
+            <div className="space-y-2">
+              <Label htmlFor="displayName">{t('fullName')}</Label>
+              <Input
+                id="displayName"
+                placeholder={t('yourName')}
+                {...form.register("displayName")}
+                disabled={isLoading || isGoogleLoading || !firebaseAuthInstance}
+              />
+              {form.formState.errors.displayName && (
+                <p className="text-sm text-destructive">{form.formState.errors.displayName.message}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email">{t('email')}</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder={t('emailPlaceholder')}
+                {...form.register("email")}
+                disabled={isLoading || isGoogleLoading || !firebaseAuthInstance}
+              />
+              {form.formState.errors.email && (
+                <p className="text-sm text-destructive">{form.formState.errors.email.message}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">{t('password')}</Label>
+              <Input
+                id="password"
+                type="password"
+                placeholder={t('passwordPlaceholder')}
+                {...form.register("password")}
+                disabled={isLoading || isGoogleLoading || !firebaseAuthInstance}
+              />
+              {form.formState.errors.password && (
+                <p className="text-sm text-destructive">{form.formState.errors.password.message}</p>
+              )}
+            </div>
+          </CardContent>
+          <CardFooter className="flex flex-col gap-4">
+            <Button type="submit" className="w-full" disabled={isLoading || isGoogleLoading || !firebaseAuthInstance}>
+              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {t('register')}
+            </Button>
 
-          <div className="relative w-full">
-            <Separator className="my-2" />
-            <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">
-              O REGISTRARSE CON
-            </span>
-          </div>
+            <div className="relative w-full">
+              <Separator className="my-2" />
+              <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">
+                {t('orRegisterWith')}
+              </span>
+            </div>
 
-          <Button variant="outline" className="w-full" type="button" onClick={handleGoogleSignUp} disabled={isLoading || isGoogleLoading || !firebaseAuthInstance}>
-            {isGoogleLoading ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <GoogleIcon className="mr-2 h-5 w-5" />
-            )}
-            Google
-          </Button>
+            <Button variant="outline" className="w-full" type="button" onClick={handleGoogleSignUp} disabled={isLoading || isGoogleLoading || !firebaseAuthInstance}>
+              {isGoogleLoading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <GoogleIcon className="mr-2 h-5 w-5" />
+              )}
+              Google
+            </Button>
 
-          <p className="text-center text-sm text-muted-foreground">
-            ¿Ya tienes una cuenta?{" "}
-            <Link href="/login" className="font-medium text-primary hover:underline">
-              Inicia Sesión
-            </Link>
-          </p>
-        </CardFooter>
-      </form>
-    </Card>
+            <p className="text-center text-sm text-muted-foreground">
+              {t('haveAccount')}{" "}
+              <Link href="/login" className="font-medium text-primary hover:underline">
+                {t('signIn')}
+              </Link>
+            </p>
+          </CardFooter>
+        </form>
+      </Card>
+    </div>
   );
 }

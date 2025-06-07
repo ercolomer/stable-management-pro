@@ -21,6 +21,7 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import Link from "next/link";
+import { useTranslations } from 'next-intl';
 
 // Icono de caballo personalizado
 const CustomHorseIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -36,6 +37,10 @@ export default function JineteGestionMontasPage() {
   const db = getDb();
   const { userProfile, loading: authLoading, activeStableId } = useAuth();
   const { toast } = useToast();
+
+  // Traducciones
+  const t = useTranslations('common');
+  const tRides = useTranslations('rides');
 
   const [jinetesEnCuadra, setJinetesEnCuadra] = useState<UserProfile[]>([]);
   const [horsesInStable, setHorsesInStable] = useState<Pick<Horse, 'id' | 'name' | 'stableId'>[]>([]);
@@ -84,12 +89,12 @@ export default function JineteGestionMontasPage() {
     const stableIdToUse = activeStableId;
 
     if (!stableIdToUse) {
-      setError("No estás asignado a ninguna cuadra. Únete a una para gestionar montas.");
+      setError(tRides('notAssignedToStable'));
       setIsLoading(false);
       return;
     }
     if (userProfile && userProfile.role !== "jinete") {
-       setError("Acceso denegado. Debes ser jinete.");
+       setError(tRides('accessDenied'));
        setIsLoading(false);
        return;
     }
@@ -145,9 +150,9 @@ export default function JineteGestionMontasPage() {
         }
       } catch (err: any) {
         console.error("Error al cargar datos:", err);
-        setError(`No se pudo cargar la información necesaria. ${err.message || ''} Código: ${err.code || 'N/A'}`);
+        setError(`${tRides('errorLoadingData')} ${err.message || ''} Código: ${err.code || 'N/A'}`);
         if (toast) {
-          toast({ title: "Error de Carga", description: `No se pudo cargar la información de asignaciones. Código: ${err.code || 'N/A'}. Mensaje: ${err.message || ''}`, variant: "destructive", duration: 7000 });
+          toast({ title: t('error'), description: `${tRides('errorLoadingData')} Código: ${err.code || 'N/A'}. Mensaje: ${err.message || ''}`, variant: "destructive", duration: 7000 });
         }
       } finally {
         setIsLoading(false);
@@ -169,7 +174,7 @@ export default function JineteGestionMontasPage() {
     e.preventDefault();
     const stableIdToUse = activeStableId;
     if (!jineteId || !horseName || !assignmentDate || !stableIdToUse) {
-      if(toast) toast({ title: "Error", description: "Completa todos los campos requeridos y asegúrate de tener una cuadra.", variant: "destructive" });
+      if(toast) toast({ title: t('error'), description: tRides('completeDataToAdd'), variant: "destructive" });
       return;
     }
     setIsSubmitting(true);
@@ -215,7 +220,7 @@ export default function JineteGestionMontasPage() {
             const dateB = b.date instanceof Timestamp ? b.date.toDate() : b.date;
             return new Date(dateA).getTime() - new Date(dateB).getTime();
           }));
-          if(toast) toast({ title: "Monta Actualizada" });
+          if(toast) toast({ title: tRides('rideUpdated') });
         } else {
           const docRef = await addDoc(collection(db, "horseAssignments"), { ...assignmentDataForFirestore, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
           finalAssignment = { ...assignmentDataForState, id: docRef.id, createdAt: new Date(), updatedAt: new Date() };
@@ -224,13 +229,13 @@ export default function JineteGestionMontasPage() {
             const dateB = b.date instanceof Timestamp ? b.date.toDate() : b.date;
             return new Date(dateA).getTime() - new Date(dateB).getTime();
           }));
-          if(toast) toast({ title: "Monta Asignada" });
+          if(toast) toast({ title: tRides('rideCreated') });
         }
       }
       resetForm();
     } catch (err: any) {
       console.error("Error al guardar monta:", err);
-      if(toast) toast({ title: "Error", description: `No se pudo guardar la asignación. ${err.message || ''} Código: ${err.code || 'N/A'}`, variant: "destructive" });
+      if(toast) toast({ title: t('error'), description: `${editingAssignment ? tRides('errorUpdating') : tRides('errorCreating')} ${err.message || ''} Código: ${err.code || 'N/A'}`, variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -269,10 +274,10 @@ export default function JineteGestionMontasPage() {
     try {
       await deleteDoc(doc(db, "horseAssignments", assignmentId));
       setAssignments(assignments.filter(a => a.id !== assignmentId));
-      if(toast) toast({ title: "Monta Eliminada" });
+      if(toast) toast({ title: tRides('rideDeleted') });
     } catch (err: any) {
       console.error("Error al eliminar monta:", err);
-      if(toast) toast({ title: "Error", description: `No se pudo eliminar la asignación. ${err.message || ''} Código: ${err.code || 'N/A'}`, variant: "destructive" });
+      if(toast) toast({ title: t('error'), description: `${tRides('errorDeleting')} ${err.message || ''} Código: ${err.code || 'N/A'}`, variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -307,10 +312,10 @@ export default function JineteGestionMontasPage() {
           a.id === assignment.id ? normalizeAssignmentDates({ ...a, ...updatedAssignmentFieldsForState } as HorseAssignment) : a
         )
       );
-      if(toast) toast({ title: "Estado de Monta Actualizado" });
+      if(toast) toast({ title: newCompletedStatus ? tRides('rideMarkedCompleted') : tRides('rideMarkedPending') });
     } catch (error: any) {
       console.error("Error al actualizar estado de monta:", error);
-      if(toast) toast({ title: "Error", description: `No se pudo actualizar el estado. ${error.message || ''} Código: ${error.code || 'N/A'}`, variant: "destructive" });
+      if(toast) toast({ title: t('error'), description: `${tRides('errorToggling')} ${error.message || ''} Código: ${error.code || 'N/A'}`, variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -330,16 +335,16 @@ export default function JineteGestionMontasPage() {
     return (
       <Alert variant="default" className="max-w-lg mx-auto">
         <AlertCircle className="h-4 w-4" />
-        <AlertTitle>No tienes una cuadra activa</AlertTitle>
+        <AlertTitle>{tRides('noActiveStable')}</AlertTitle>
         <AlertDescription>
-        Por favor, <Link href="/profile" className="text-primary underline">únete a una cuadra</Link> para gestionar montas.
+        {tRides('pleaseJoin')}
         </AlertDescription>
       </Alert>
     );
   }
   
   if (error && !isLoading) {
-     return <Alert variant="destructive" className="max-w-lg mx-auto"><AlertCircle className="h-4 w-4" /><AlertTitle>Error</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>;
+     return <Alert variant="destructive" className="max-w-lg mx-auto"><AlertCircle className="h-4 w-4" /><AlertTitle>{t('error')}</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>;
   }
 
 
@@ -349,44 +354,44 @@ export default function JineteGestionMontasPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <PlusCircle className="h-6 w-6" />
-            {editingAssignment ? "Editar Asignación de Monta" : "Asignar Nueva Monta"}
+            {editingAssignment ? tRides('editRideDetails') : tRides('addNewRide')}
           </CardTitle>
           <CardDescription>
-            {editingAssignment ? "Modifica los detalles de la monta." : "Asigna caballos a miembros de la cuadra."}
+            {editingAssignment ? tRides('modifyRideDetails') : tRides('completeDataToAdd')}
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmitAssignment}>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <Label htmlFor="jineteIdJineteMontas">Jinete/Miembro</Label>
+                <Label htmlFor="jineteIdJineteMontas">{tRides('riderMember')}</Label>
                 <Select value={jineteId} onValueChange={setJineteId} disabled={isSubmitting}>
-                  <SelectTrigger id="jineteIdJineteMontas"><SelectValue placeholder="Selecciona un miembro" /></SelectTrigger>
+                  <SelectTrigger id="jineteIdJineteMontas"><SelectValue placeholder={tRides('selectMember')} /></SelectTrigger>
                   <SelectContent>
                     {jinetesEnCuadra.length > 0 ? jinetesEnCuadra.map(jinete => (
                       <SelectItem key={jinete.uid} value={jinete.uid}>{jinete.displayName}</SelectItem>
-                    )) : <SelectItem value="no-jinetes" disabled>No hay miembros</SelectItem>}
+                    )) : <SelectItem value="no-jinetes" disabled>{tRides('noMembers')}</SelectItem>}
                   </SelectContent>
                 </Select>
               </div>
               <div>
-                <Label htmlFor="horseNameJineteMontas">Caballo</Label>
+                <Label htmlFor="horseNameJineteMontas">{tRides('horse')}</Label>
                 <Select value={horseName} onValueChange={setHorseName} disabled={isSubmitting}>
-                  <SelectTrigger id="horseNameJineteMontas"><SelectValue placeholder="Selecciona un caballo" /></SelectTrigger>
+                  <SelectTrigger id="horseNameJineteMontas"><SelectValue placeholder={tRides('selectHorse')} /></SelectTrigger>
                   <SelectContent>
                     {horsesInStable.length > 0 ? horsesInStable.map(horse => (
                       <SelectItem key={horse.id} value={horse.name}>{horse.name}</SelectItem>
-                    )) : <SelectItem value="no-caballos" disabled>No hay caballos</SelectItem>}
+                    )) : <SelectItem value="no-caballos" disabled>{tRides('noHorses')}</SelectItem>}
                   </SelectContent>
                 </Select>
               </div>
               <div>
-                <Label htmlFor="assignmentDateJineteMontas">Fecha y Hora de la Monta</Label>
+                <Label htmlFor="assignmentDateJineteMontas">{tRides('dateTime')}</Label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button id="assignmentDateJineteMontas" variant={"outline"} className={`w-full justify-start text-left font-normal ${!assignmentDate && "text-muted-foreground"}`} disabled={isSubmitting}>
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {assignmentDate ? format(assignmentDate, "PPP HH:mm", { locale: es }) : <span>Selecciona fecha y hora</span>}
+                      {assignmentDate ? format(assignmentDate, "PPP HH:mm", { locale: es }) : <span>{tRides('selectTime')}</span>}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0">
@@ -410,15 +415,15 @@ export default function JineteGestionMontasPage() {
               </div>
             </div>
             <div>
-              <Label htmlFor="notesJineteMontas">Notas Adicionales (Opcional)</Label>
-              <Textarea id="notesJineteMontas" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ej: Enfocarse en transiciones..." disabled={isSubmitting} />
+              <Label htmlFor="notesJineteMontas">{tRides('notes')} ({tRides('optional')})</Label>
+              <Textarea id="notesJineteMontas" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={tRides('rideNotes')} disabled={isSubmitting} />
             </div>
           </CardContent>
           <CardFooter className="flex justify-end gap-2">
-            {editingAssignment && <Button type="button" variant="outline" onClick={resetForm} disabled={isSubmitting}>Cancelar Edición</Button>}
+            {editingAssignment && <Button type="button" variant="outline" onClick={resetForm} disabled={isSubmitting}>{tRides('cancelEdit')}</Button>}
             <Button type="submit" disabled={isSubmitting || jinetesEnCuadra.length === 0 || horsesInStable.length === 0}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {editingAssignment ? "Guardar Cambios" : "Asignar Monta"}
+              {editingAssignment ? tRides('saveChanges') : tRides('addRide')}
             </Button>
           </CardFooter>
         </form>
@@ -428,25 +433,25 @@ export default function JineteGestionMontasPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <CustomHorseIcon className="h-6 w-6" />
-            Montas Asignadas en la Cuadra
+            {tRides('ridesList')}
           </CardTitle>
-          <CardDescription>Lista de todas las montas programadas en la cuadra.</CardDescription>
+          <CardDescription>{tRides('clickToEdit')}</CardDescription>
         </CardHeader>
         <CardContent>
         { isLoading ? (<div className="flex justify-center items-center p-8"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>) :
           assignments.length === 0 ? (
-            <p className="text-muted-foreground">No hay montas asignadas.</p>
+            <p className="text-muted-foreground">{tRides('noRidesAssigned')}</p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[50px]">Estado</TableHead>
-                  <TableHead>Jinete</TableHead>
-                  <TableHead>Caballo</TableHead>
-                  <TableHead>Fecha y Hora</TableHead>
-                  <TableHead>Completada por</TableHead>
-                  <TableHead>Notas</TableHead>
-                  <TableHead className="text-right">Acciones</TableHead>
+                  <TableHead className="w-[50px]">{tRides('status')}</TableHead>
+                  <TableHead>{tRides('rider')}</TableHead>
+                  <TableHead>{tRides('horse')}</TableHead>
+                  <TableHead>{tRides('dateTime')}</TableHead>
+                  <TableHead>{tRides('completedBy')}</TableHead>
+                  <TableHead>{tRides('notes')}</TableHead>
+                  <TableHead className="text-right">{tRides('actions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -460,7 +465,7 @@ export default function JineteGestionMontasPage() {
                   return (
                   <TableRow key={assignment.id} className={assignment.isCompleted ? "bg-green-50 dark:bg-green-900/30 opacity-70" : ""}>
                     <TableCell>
-                      <Button variant="ghost" size="icon" onClick={() => toggleAssignmentCompletion(assignment)} disabled={isSubmitting} title={assignment.isCompleted ? "Marcar como pendiente" : "Marcar como completada"}>
+                      <Button variant="ghost" size="icon" onClick={() => toggleAssignmentCompletion(assignment)} disabled={isSubmitting} title={assignment.isCompleted ? tRides('markPending') : tRides('markCompleted')}>
                         {assignment.isCompleted ? <CheckCircle2 className="h-5 w-5 text-green-600" /> : <Circle className="h-5 w-5 text-muted-foreground" />}
                       </Button>
                     </TableCell>
@@ -470,7 +475,7 @@ export default function JineteGestionMontasPage() {
                     <TableCell>
                       {assignment.isCompleted && assignment.completedBy 
                           ? `${getJineteName(assignment.completedBy)} (${displayCompletedAt ? format(displayCompletedAt, "dd/MM/yy HH:mm", {locale: es}) : 'N/A'})`
-                          : "Pendiente"}
+                          : tRides('pending')}
                     </TableCell>
                     <TableCell className="max-w-xs truncate" title={assignment.notes || undefined}>{assignment.notes || "N/A"}</TableCell>
                     <TableCell className="text-right space-x-1">
@@ -485,16 +490,16 @@ export default function JineteGestionMontasPage() {
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
-                            <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+                            <AlertDialogTitle>{tRides('confirmDelete')}</AlertDialogTitle>
                             <AlertDialogDescription>
-                              Se eliminará esta asignación de monta.
+                              {tRides('irreversibleAction')}
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
-                            <AlertDialogCancel disabled={isSubmitting}>Cancelar</AlertDialogCancel>
+                            <AlertDialogCancel disabled={isSubmitting}>{t('cancel')}</AlertDialogCancel>
                             <AlertDialogAction onClick={() => handleDeleteAssignment(assignment.id)} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">
                               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                              Eliminar
+                              {t('delete')}
                             </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>

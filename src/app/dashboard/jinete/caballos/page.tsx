@@ -21,12 +21,17 @@ import { Calendar } from "@/components/ui/calendar";
 import { format, isSameDay, startOfDay } from "date-fns";
 import { es } from "date-fns/locale";
 import Link from "next/link";
+import { useTranslations } from 'next-intl';
 
 
 export default function JineteGestionCaballosPage() {
   const db = getDb(); 
   const { userProfile, loading: authLoading, activeStableId } = useAuth();
   const { toast } = useToast();
+  
+  // Traducciones
+  const t = useTranslations('common');
+  const tHorses = useTranslations('horses');
 
   const [horses, setHorses] = useState<Horse[]>([]);
   const [jinetesEnCuadra, setJinetesEnCuadra] = useState<UserProfile[]>([]);
@@ -106,13 +111,13 @@ export default function JineteGestionCaballosPage() {
     const stableIdToUse = activeStableId;
 
     if (!stableIdToUse) {
-      setError("No estás asignado a ninguna cuadra. Únete a una para gestionar caballos.");
+      setError(tHorses('notAssignedToStable'));
       setIsLoading(false);
       return;
     }
     
     if (userProfile && userProfile.role !== "jinete") {
-      setError("Acceso denegado. Debes ser jinete.");
+      setError(tHorses('accessDenied'));
       setIsLoading(false);
       return;
     }
@@ -267,7 +272,7 @@ export default function JineteGestionCaballosPage() {
         );
         if (!alreadyExists) {
             finalHistoricalStays.unshift(mainStayCandidate);
-             if(toast) toast({ title: "Info", description: "Estancia principal añadida/actualizada en historial.", variant: "default", duration: 4000 });
+             if(toast) toast({ title: tHorses('horseUpdated') });
         }
     } else if (horseEntryDate && !horseExitDate && !editingHorse) { 
       const mainStayCandidate: HistoricalStayForm = {
@@ -276,7 +281,7 @@ export default function JineteGestionCaballosPage() {
         notes: "Estancia principal al crear",
       };
       finalHistoricalStays.unshift(mainStayCandidate);
-      if(toast) toast({ title: "Info", description: "Estancia principal (abierta) añadida al historial.", variant: "default", duration: 4000 });
+      if(toast) toast({ title: tHorses('horseUpdated') });
     }
 
 
@@ -304,9 +309,7 @@ export default function JineteGestionCaballosPage() {
     try {
       if (stableIdToUse) {
           if (editingHorse) {
-            const horseRef = doc(db, "horses", editingHorse.id);
-            await updateDoc(horseRef, { ...horseDataForFirestore, updatedAt: serverTimestamp() });
-            
+            await updateDoc(doc(db, "horses", editingHorse.id), horseDataForFirestore);
             const { stableId: idFromFirestore, ...restOfHorseData } = horseDataForFirestore;
             const updatedHorseObjectForState = normalizeHorseDatesForState({
                 id: editingHorse.id, 
@@ -335,7 +338,7 @@ export default function JineteGestionCaballosPage() {
             if (selectedHorseForCalendar && selectedHorseForCalendar.id === editingHorse.id) {
                 setSelectedHorseForCalendar(updatedHorseObjectForState);
             }
-            if(toast) toast({ title: "Caballo Actualizado" });
+            if(toast) toast({ title: tHorses('horseUpdated') });
           } else {
             const docRef = await addDoc(collection(db, "horses"), { ...horseDataForFirestore, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
             
@@ -364,13 +367,13 @@ export default function JineteGestionCaballosPage() {
                 updatedAt: new Date()
             });
             setHorses(prevHorses => [newHorseForState, ...prevHorses].sort((a,b) => a.name.localeCompare(b.name)));
-            if(toast) toast({ title: "Caballo Añadido" });
+            if(toast) toast({ title: tHorses('horseCreated') });
         }
       }
       resetForm();
     } catch (err: any) {
       console.error("Error al guardar caballo:", err);
-      if(toast) toast({ title: "Error", description: `No se pudo guardar el caballo. ${err.message || ''} Código: ${err.code || 'N/A'}`, variant: "destructive" });
+      if(toast) toast({ title: t('error'), description: `${editingHorse ? tHorses('errorUpdating') : tHorses('errorCreating')} ${err.message || ''} Código: ${err.code || 'N/A'}`, variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -421,11 +424,11 @@ export default function JineteGestionCaballosPage() {
     try {
         await deleteDoc(doc(db, "horses", horseId));
         setHorses(horses.filter(h => h.id !== horseId));
-        if(toast) toast({ title: "Caballo Eliminado" });
+        if(toast) toast({ title: tHorses('horseDeleted') });
       if (selectedHorseForCalendar?.id === horseId) setSelectedHorseForCalendar(null);
     } catch (err: any) {
       console.error("Error al eliminar caballo:", err);
-      if(toast) toast({ title: "Error", description: `No se pudo eliminar el caballo. ${err.message || ''} Código: ${err.code || 'N/A'}`, variant: "destructive" });
+      if(toast) toast({ title: t('error'), description: `${tHorses('errorDeleting')} ${err.message || ''} Código: ${err.code || 'N/A'}`, variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -466,16 +469,16 @@ export default function JineteGestionCaballosPage() {
     return (
       <Alert variant="default" className="max-w-lg mx-auto">
           <AlertCircle className="h-4 w-4" />
-          <AlertTitle>No tienes una cuadra activa</AlertTitle>
+          <AlertTitle>{tHorses('noActiveStable')}</AlertTitle>
           <AlertDescription>
-          Por favor, <Link href="/profile" className="text-primary underline">únete a una cuadra</Link> para gestionar caballos.
+          {t('pleaseJoin')} <Link href="/profile" className="text-primary underline">{tHorses('joinStableToManage')}</Link> {tHorses('toManageHorses')}
           </AlertDescription>
       </Alert>
     );
   }
 
   if (error && !isLoading) {
-     return <Alert variant="destructive" className="max-w-lg mx-auto"><AlertCircle className="h-4 w-4" /><AlertTitle>Error</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>;
+     return <Alert variant="destructive" className="max-w-lg mx-auto"><AlertCircle className="h-4 w-4" /><AlertTitle>{t('error')}</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>;
   }
 
 
@@ -484,33 +487,33 @@ export default function JineteGestionCaballosPage() {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2"><PlusCircle className="h-6 w-6" />{editingHorse ? "Editar Caballo" : "Añadir Nuevo Caballo"}</CardTitle>
-            {!editingHorse && (<Button variant="ghost" size="icon" onClick={() => setShowHorseForm(!showHorseForm)} aria-expanded={showHorseForm} disabled={isSubmitting}>{showHorseForm ? <ChevronUp /> : <ChevronDown />}<span className="sr-only">{showHorseForm ? "Ocultar Formulario" : "Mostrar Formulario"}</span></Button>)}
+            <CardTitle className="flex items-center gap-2"><PlusCircle className="h-6 w-6" />{editingHorse ? tHorses('editHorse') : tHorses('addNewHorse')}</CardTitle>
+            {!editingHorse && (<Button variant="ghost" size="icon" onClick={() => setShowHorseForm(!showHorseForm)} aria-expanded={showHorseForm} disabled={isSubmitting}>{showHorseForm ? <ChevronUp /> : <ChevronDown />}<span className="sr-only">{showHorseForm ? tHorses('hideForm') : tHorses('showForm')}</span></Button>)}
           </div>
-          <CardDescription>{editingHorse ? "Modifica los detalles del caballo." : showHorseForm ? "Completa los datos para añadir un nuevo caballo." : "Haz clic en la flecha para mostrar el formulario y añadir un nuevo caballo."}</CardDescription>
+          <CardDescription>{editingHorse ? tHorses('modifyDetails') : showHorseForm ? tHorses('completeDataToAdd') : tHorses('clickToShowForm')}</CardDescription>
         </CardHeader>
         {isFormVisible && (
           <form onSubmit={handleSubmitHorse}>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><Label htmlFor="horseName">Nombre del Caballo</Label><Input id="horseName" value={horseName} onChange={(e) => setHorseName(e.target.value)} required disabled={isSubmitting} /></div>
-                <div><Label htmlFor="horseBreed">Raza (Opcional)</Label><Input id="horseBreed" value={horseBreed} onChange={(e) => setHorseBreed(e.target.value)} disabled={isSubmitting} /></div>
+                <div><Label htmlFor="horseName">{tHorses('horseName')}</Label><Input id="horseName" value={horseName} onChange={(e) => setHorseName(e.target.value)} required disabled={isSubmitting} /></div>
+                <div><Label htmlFor="horseBreed">{tHorses('breed')} (Opcional)</Label><Input id="horseBreed" value={horseBreed} onChange={(e) => setHorseBreed(e.target.value)} disabled={isSubmitting} /></div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><Label htmlFor="horseAge">Edad (Opcional)</Label><Input id="horseAge" type="number" value={horseAge} onChange={(e) => setHorseAge(e.target.value)} disabled={isSubmitting} /></div>
-                <div><Label htmlFor="horseOwnerName">Nombre del Dueño (Opcional)</Label><Input id="horseOwnerName" value={horseOwnerName} onChange={(e) => setHorseOwnerName(e.target.value)} disabled={isSubmitting} /></div>
+                <div><Label htmlFor="horseAge">{tHorses('age')} (Opcional)</Label><Input id="horseAge" type="number" value={horseAge} onChange={(e) => setHorseAge(e.target.value)} disabled={isSubmitting} /></div>
+                <div><Label htmlFor="horseOwnerName">{tHorses('ownerName')} (Opcional)</Label><Input id="horseOwnerName" value={horseOwnerName} onChange={(e) => setHorseOwnerName(e.target.value)} disabled={isSubmitting} /></div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><Label htmlFor="horseEntryDate">Fecha Ingreso Principal</Label><Popover><PopoverTrigger asChild><Button id="horseEntryDate" variant="outline" className={`w-full justify-start text-left font-normal ${!horseEntryDate && "text-muted-foreground"}`} disabled={isSubmitting}><CalendarIcon className="mr-2 h-4 w-4" />{horseEntryDate ? format(startOfDay(horseEntryDate), "PPP", { locale: es }) : "Selecciona fecha"}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={horseEntryDate} onSelect={(date) => setHorseEntryDate(date ? startOfDay(date) : undefined)} initialFocus disabled={isSubmitting}/></PopoverContent></Popover></div>
-                <div><Label htmlFor="horseExitDate">Fecha Salida Principal</Label><Popover><PopoverTrigger asChild><Button id="horseExitDate" variant="outline" className={`w-full justify-start text-left font-normal ${!horseExitDate && "text-muted-foreground"}`} disabled={isSubmitting}><CalendarIcon className="mr-2 h-4 w-4" />{horseExitDate ? format(startOfDay(horseExitDate), "PPP", { locale: es }) : "Indefinido"}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={horseExitDate} onSelect={(date) => setHorseExitDate(date ? startOfDay(date) : undefined)} initialFocus disabled={isSubmitting}/></PopoverContent></Popover></div>
+                <div><Label htmlFor="horseEntryDate">{tHorses('entryDate')}</Label><Popover><PopoverTrigger asChild><Button id="horseEntryDate" variant="outline" className={`w-full justify-start text-left font-normal ${!horseEntryDate && "text-muted-foreground"}`} disabled={isSubmitting}><CalendarIcon className="mr-2 h-4 w-4" />{horseEntryDate ? format(startOfDay(horseEntryDate), "PPP", { locale: es }) : "Selecciona fecha"}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={horseEntryDate} onSelect={(date) => setHorseEntryDate(date ? startOfDay(date) : undefined)} initialFocus disabled={isSubmitting}/></PopoverContent></Popover></div>
+                <div><Label htmlFor="horseExitDate">{tHorses('exitDate')}</Label><Popover><PopoverTrigger asChild><Button id="horseExitDate" variant="outline" className={`w-full justify-start text-left font-normal ${!horseExitDate && "text-muted-foreground"}`} disabled={isSubmitting}><CalendarIcon className="mr-2 h-4 w-4" />{horseExitDate ? format(startOfDay(horseExitDate), "PPP", { locale: es }) : "Indefinido"}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={horseExitDate} onSelect={(date) => setHorseExitDate(date ? startOfDay(date) : undefined)} initialFocus disabled={isSubmitting}/></PopoverContent></Popover></div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><Label htmlFor="horseFarrierDueDate">Próxima Fecha Herrador (Opcional)</Label><Popover><PopoverTrigger asChild><Button id="horseFarrierDueDate" variant="outline" className={`w-full justify-start text-left font-normal ${!horseFarrierDueDate && "text-muted-foreground"}`} disabled={isSubmitting}><CalendarIcon className="mr-2 h-4 w-4" />{horseFarrierDueDate ? format(startOfDay(horseFarrierDueDate), "PPP", { locale: es }) : "Selecciona fecha"}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={horseFarrierDueDate} onSelect={(date) => setHorseFarrierDueDate(date ? startOfDay(date) : undefined)} initialFocus disabled={isSubmitting}/></PopoverContent></Popover></div>
-                <div><Label htmlFor="horseImageUrl">URL de Imagen (Opcional)</Label><Input id="horseImageUrl" value={horseImageUrl} onChange={(e) => setHorseImageUrl(e.target.value)} placeholder="https://placehold.co/600x400.png" disabled={isSubmitting} /></div>
+                <div><Label htmlFor="horseFarrierDueDate">{tHorses('farrierDueDate')} (Opcional)</Label><Popover><PopoverTrigger asChild><Button id="horseFarrierDueDate" variant="outline" className={`w-full justify-start text-left font-normal ${!horseFarrierDueDate && "text-muted-foreground"}`} disabled={isSubmitting}><CalendarIcon className="mr-2 h-4 w-4" />{horseFarrierDueDate ? format(startOfDay(horseFarrierDueDate), "PPP", { locale: es }) : "Selecciona fecha"}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={horseFarrierDueDate} onSelect={(date) => setHorseFarrierDueDate(date ? startOfDay(date) : undefined)} initialFocus disabled={isSubmitting}/></PopoverContent></Popover></div>
+                <div><Label htmlFor="horseImageUrl">{tHorses('imageUrl')} (Opcional)</Label><Input id="horseImageUrl" value={horseImageUrl} onChange={(e) => setHorseImageUrl(e.target.value)} placeholder="https://placehold.co/600x400.png" disabled={isSubmitting} /></div>
               </div>
-              <div><Label htmlFor="horseEquipmentLocation">Ubicación del Material (Opcional)</Label><Input id="horseEquipmentLocation" value={horseEquipmentLocation} onChange={(e) => setHorseEquipmentLocation(e.target.value)} placeholder="Ej: Box 3, guadarnés principal" disabled={isSubmitting} /></div>
-              <div><Label htmlFor="horseNotes">Notas Generales del Caballo (Opcional)</Label><Textarea id="horseNotes" value={horseNotes} onChange={(e) => setHorseNotes(e.target.value)} placeholder="Comportamiento, preferencias, etc." disabled={isSubmitting} /></div>
-              <div><Label htmlFor="horseAdditionalCareNotes">Notas Adicionales de Cuidado (Opcional)</Label><Textarea id="horseAdditionalCareNotes" value={horseAdditionalCareNotes} onChange={(e) => setHorseAdditionalCareNotes(e.target.value)} placeholder="Suplementos, cuidados especiales, etc." disabled={isSubmitting} /></div>
+              <div><Label htmlFor="horseEquipmentLocation">{tHorses('equipmentLocation')} (Opcional)</Label><Input id="horseEquipmentLocation" value={horseEquipmentLocation} onChange={(e) => setHorseEquipmentLocation(e.target.value)} placeholder="Ej: Box 3, guadarnés principal" disabled={isSubmitting} /></div>
+              <div><Label htmlFor="horseNotes">{tHorses('generalNotes')} (Opcional)</Label><Textarea id="horseNotes" value={horseNotes} onChange={(e) => setHorseNotes(e.target.value)} placeholder="Comportamiento, preferencias, etc." disabled={isSubmitting} /></div>
+              <div><Label htmlFor="horseAdditionalCareNotes">{tHorses('additionalCareNotes')} (Opcional)</Label><Textarea id="horseAdditionalCareNotes" value={horseAdditionalCareNotes} onChange={(e) => setHorseAdditionalCareNotes(e.target.value)} placeholder="Suplementos, cuidados especiales, etc." disabled={isSubmitting} /></div>
 
               {editingHorse && (
                 <div className="mt-6 pt-4 border-t">
@@ -563,8 +566,8 @@ export default function JineteGestionCaballosPage() {
               )}
             </CardContent>
             <CardFooter className="flex justify-end gap-2">
-              {editingHorse && <Button type="button" variant="outline" onClick={resetForm} disabled={isSubmitting}>Cancelar Edición</Button>}
-              <Button type="submit" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{editingHorse ? "Guardar Cambios" : "Añadir Caballo"}</Button>
+              {editingHorse && <Button type="button" variant="outline" onClick={resetForm} disabled={isSubmitting}>{tHorses('cancelEdit')}</Button>}
+              <Button type="submit" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{editingHorse ? tHorses('saveChanges') : tHorses('addHorse')}</Button>
             </CardFooter>
           </form>
         )}
@@ -572,24 +575,24 @@ export default function JineteGestionCaballosPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><PawPrint className="h-6 w-6" />Caballos en la Cuadra</CardTitle>
-          <CardDescription>Lista de caballos. Haz clic para ver su calendario y detalles.</CardDescription>
+          <CardTitle className="flex items-center gap-2"><PawPrint className="h-6 w-6" />{tHorses('horsesInStable')}</CardTitle>
+          <CardDescription>{tHorses('clickToViewCalendar')}</CardDescription>
         </CardHeader>
         <CardContent>
           { isLoading ? (<div className="flex justify-center items-center p-8"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>) :
-            horses.length === 0 ? (<p className="text-muted-foreground p-4 text-center">No hay caballos registrados.</p>) : (
+            horses.length === 0 ? (<p className="text-muted-foreground p-4 text-center">{tHorses('noHorsesRegistered')}</p>) : (
             <Table>
-              <TableHeader><TableRow><TableHead>Imagen</TableHead><TableHead>Nombre</TableHead><TableHead>Raza</TableHead><TableHead>Edad</TableHead><TableHead>Dueño</TableHead><TableHead>F. Ingreso Ppal.</TableHead><TableHead className="max-w-xs">Notas Generales</TableHead><TableHead className="text-right">Acciones</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead>{tHorses('image')}</TableHead><TableHead>{tHorses('name')}</TableHead><TableHead>{tHorses('breed')}</TableHead><TableHead>{tHorses('age')}</TableHead><TableHead>{tHorses('owner')}</TableHead><TableHead>{tHorses('mainEntryDate')}</TableHead><TableHead className="max-w-xs">{tHorses('generalNotes')}</TableHead><TableHead className="text-right">{tHorses('actions')}</TableHead></TableRow></TableHeader>
               <TableBody>
                 {horses.sort((a, b) => a.name.localeCompare(b.name)).map((horse) => (
                   <TableRow key={horse.id} onClick={() => handleSelectHorseForCalendar(horse)} className={`cursor-pointer hover:bg-muted/50 ${selectedHorseForCalendar?.id === horse.id ? "bg-primary/10 dark:bg-primary/20 ring-2 ring-primary" : ""}`} aria-selected={selectedHorseForCalendar?.id === horse.id}>
                     <TableCell><Avatar className="h-10 w-10 rounded-md"><AvatarImage src={horse.imageUrl || `https://placehold.co/60x60.png?text=${horse.name[0]}`} alt={horse.name} data-ai-hint={horse.dataAiHint || "horse animal"} className="object-cover" /><AvatarFallback className="rounded-md">{horse.name[0].toUpperCase()}</AvatarFallback></Avatar></TableCell>
                     <TableCell className="font-medium">{horse.name}</TableCell>
-                    <TableCell>{horse.breed || "N/D"}</TableCell>
-                    <TableCell>{horse.age ? `${horse.age} años` : "N/D"}</TableCell>
-                    <TableCell>{horse.ownerName || "N/D"}</TableCell>
-                    <TableCell>{horse.entryDate && horse.entryDate instanceof Date ? format(startOfDay(horse.entryDate), "dd/MM/yy", { locale: es }) : "N/D"}</TableCell>
-                    <TableCell className="max-w-xs truncate" title={horse.notes || undefined}>{horse.notes || "N/D"}</TableCell>
+                    <TableCell>{horse.breed || tHorses('notAvailable')}</TableCell>
+                    <TableCell>{horse.age ? `${horse.age} ${tHorses('years')}` : tHorses('notAvailable')}</TableCell>
+                    <TableCell>{horse.ownerName || tHorses('notAvailable')}</TableCell>
+                    <TableCell>{horse.entryDate && horse.entryDate instanceof Date ? format(startOfDay(horse.entryDate), "dd/MM/yy", { locale: es }) : tHorses('notAvailable')}</TableCell>
+                    <TableCell className="max-w-xs truncate" title={horse.notes || undefined}>{horse.notes || tHorses('notAvailable')}</TableCell>
                     <TableCell className="text-right space-x-1">
                       <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleEditHorse(horse);}} disabled={isSubmitting} title="Editar Caballo"><Edit2 className="h-4 w-4" /></Button>
                       <AlertDialog><AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={(e) => e.stopPropagation()} disabled={isSubmitting} title="Eliminar Caballo"><Trash2 className="h-4 w-4" /></Button></AlertDialogTrigger>
@@ -608,10 +611,10 @@ export default function JineteGestionCaballosPage() {
         <Card className="mt-6">
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
-              <span className="flex items-center gap-2"><CalendarDays className="h-6 w-6"/>Actividad de: {selectedHorseForCalendar.name}</span>
-              <Button variant="outline" size="sm" onClick={() => handleSelectHorseForCalendar(null)}><X className="h-4 w-4 mr-2" /> Cerrar Detalles</Button>
+              <span className="flex items-center gap-2"><CalendarDays className="h-6 w-6"/>{tHorses('activityOf')} {selectedHorseForCalendar.name}</span>
+              <Button variant="outline" size="sm" onClick={() => handleSelectHorseForCalendar(null)}><X className="h-4 w-4 mr-2" /> {tHorses('closeDetails')}</Button>
             </CardTitle>
-            <CardDescription>Visualiza días de trabajo, ingreso/salida y otra info. Clic en un día para detalles.</CardDescription>
+            <CardDescription>{tHorses('visualizeWorkDays')}</CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="md:col-span-2">

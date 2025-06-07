@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { getDb } from "@/lib/firebase/config";
 import { collection, addDoc, getDocs, query, where, doc, updateDoc, deleteDoc, serverTimestamp, Timestamp, getDoc } from "firebase/firestore";
@@ -21,18 +21,29 @@ import { Calendar } from "@/components/ui/calendar";
 import { format, isSameDay, startOfDay } from "date-fns";
 import { es } from "date-fns/locale";
 import Link from "next/link";
+import { useTranslations } from 'next-intl';
+import StableWrapper from "@/components/stable-wrapper";
 
 export default function GestionCaballosPage() {
   const db = getDb();
   const { userProfile, loading: authLoading, activeStableId } = useAuth();
   const { toast } = useToast();
 
+  // Traducciones
+  const t = useTranslations('common');
+  const tHorses = useTranslations('horses');
+
+  // Estado para evitar errores de DOM durante desmontaje
+  const [isMounted, setIsMounted] = useState(true);
+
+  // Estados principales
   const [horses, setHorses] = useState<Horse[]>([]);
   const [jinetes, setJinetes] = useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Estados del formulario - memoizados para estabilidad
   const [horseName, setHorseName] = useState("");
   const [horseBreed, setHorseBreed] = useState("");
   const [horseAge, setHorseAge] = useState<number | string>("");
@@ -58,7 +69,8 @@ export default function GestionCaballosPage() {
   const [selectedDateForDetails, setSelectedDateForDetails] = useState<Date | null>(null);
   const [activityCalendarMonth, setActivityCalendarMonth] = useState<Date>(new Date());
 
-  const normalizeHorseDatesForState = (horse: Horse): Horse => {
+  // Funciones memoizadas para estabilidad
+  const normalizeHorseDatesForState = useCallback((horse: Horse): Horse => {
     const normalized = {
         ...horse,
         entryDate: horse.entryDate ? startOfDay(horse.entryDate instanceof Timestamp ? horse.entryDate.toDate() : new Date(horse.entryDate)) : undefined,
@@ -80,9 +92,9 @@ export default function GestionCaballosPage() {
         }));
     }
     return normalized;
-  };
+  }, []);
   
-  const convertHorseDatesFromFirestore = (data: any): Horse => {
+  const convertHorseDatesFromFirestore = useCallback((data: any): Horse => {
     return {
       ...data,
       entryDate: data.entryDate instanceof Timestamp ? data.entryDate.toDate() : (data.entryDate ? new Date(data.entryDate) : undefined),
@@ -96,109 +108,149 @@ export default function GestionCaballosPage() {
       createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : (data.createdAt ? new Date(data.createdAt) : new Date()),
       updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : (data.updatedAt ? new Date(data.updatedAt) : new Date()),
     } as Horse;
-  };
+  }, []);
 
-
-  useEffect(() => {
-    if (authLoading) return;
-    if (!userProfile || userProfile.role !== "jefe de cuadra") {
-      setError("Acceso denegado. Debes ser jefe de cuadra.");
-      setIsLoading(false);
-      return;
-    }
-    
-    if (!activeStableId) {
-      setError("No estás asignado a ninguna cuadra. Crea o únete a una primero.");
-      setIsLoading(false);
-      return;
-    }
-
-    const fetchHorsesAndJinetes = async () => {
-      setIsLoading(true);
-      setError(null);
-      
-      console.log(`GestionCaballosPage (Jefe) - Fetching data for stableId: ${activeStableId}`);
-      try {
-        console.log("GestionCaballosPage (Jefe) - Fetching horses from Firestore:", { collection: "horses", where: `stableId == ${activeStableId}` });
-        const horsesQuery = query(collection(db, "horses"), where("stableId", "==", activeStableId));
-        const horsesSnapshot = await getDocs(horsesQuery);
-        const fetchedHorses = horsesSnapshot.docs.map(d => {
-          const data = d.data();
-          const horseWithJSDates = convertHorseDatesFromFirestore(data);
-          const { id: idFromData, ...restOfHorseFields } = horseWithJSDates;
-          return normalizeHorseDatesForState({ id: d.id, ...restOfHorseFields });
-        });
-        setHorses(fetchedHorses);
-
-        console.log("GestionCaballosPage (Jefe) - Fetching stable members from Firestore for stable:", activeStableId);
-        const stableDocRef = doc(db, "stables", activeStableId);
-        const stableDocSnap = await getDoc(stableDocRef);
-        if (stableDocSnap.exists()) {
-            const stableData = stableDocSnap.data() as Stable;
-            const memberIds = stableData.members || [];
-            if (memberIds.length > 0) {
-                const usersQuery = query(collection(db, "users"), where("uid", "in", memberIds));
-                const usersSnapshot = await getDocs(usersQuery);
-                setJinetes(usersSnapshot.docs.map(d => d.data() as UserProfile));
-            } else {
-                setJinetes([]);
-            }
-        } else {
-            setJinetes([]);
-            console.warn("GestionCaballosPage (Jefe) - Stable document not found for ID:", activeStableId);
-        }
-
-      } catch (err: any) {
-        console.error("Error al cargar caballos y jinetes:", err);
-        setError(`No se pudo cargar la lista de caballos/jinetes. ${err.message || ''} Código: ${err.code || 'N/A'}`);
-        if(toast) toast({ title: "Error", description: `No se pudo cargar la lista de caballos/jinetes. ${err.message || ''} Código: ${err.code || 'N/A'}`, variant: "destructive"});
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchHorsesAndJinetes();
-  }, [userProfile, authLoading, activeStableId, toast, db]);
-
-  useEffect(() => {
-    if (!selectedHorseForCalendar || !activeStableId) {
-      setHorseAssignmentsForCalendar([]);
-      return;
-    }
-    const fetchAssignments = async () => {
-      setIsCalendarLoading(true);
-      try {
-        console.log("GestionCaballosPage (Jefe) - Fetching assignments from Firestore for horse:", selectedHorseForCalendar.name, { collection: "horseAssignments", where: `stableId == ${activeStableId} AND horseName == ${selectedHorseForCalendar.name}`});
-        const q = query(collection(db, "horseAssignments"), where("stableId", "==", activeStableId), where("horseName", "==", selectedHorseForCalendar.name));
-        const snap = await getDocs(q);
-        setHorseAssignmentsForCalendar(snap.docs.map(d => ({ id: d.id, ...d.data(), date: (d.data().date as Timestamp).toDate() } as HorseAssignment)));
-      } catch (err: any) { console.error("Error cargando montas:", err); if(toast) toast({ title: "Error", description: `No se pudieron cargar las montas. ${err.message || ''} Código: ${err.code || 'N/A'}`, variant: "destructive" });}
-      setIsCalendarLoading(false);
-    };
-    fetchAssignments();
-  }, [selectedHorseForCalendar, activeStableId, toast, db]);
-
-  const getJineteNameForAssignment = (jineteId: string) => {
+  const getJineteNameForAssignment = useCallback((jineteId: string) => {
     const jinete = jinetes.find(j => j.uid === jineteId);
     return jinete?.displayName || `ID: ${jineteId.substring(0,6)}...`;
-  };
+  }, [jinetes]);
 
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
+    if (!isMounted) return;
     setHorseName(""); setHorseBreed(""); setHorseAge(""); setHorseNotes(""); setHorseImageUrl("");
     setHorseOwnerName(""); setHorseEntryDate(undefined); setHorseExitDate(undefined);
     setHorseFarrierDueDate(undefined); setHorseEquipmentLocation(""); setHorseAdditionalCareNotes("");
     setHorseHistoricalStays([]); setNewHistoricalEntryDate(undefined); setNewHistoricalExitDate(undefined); setNewHistoricalNotes("");
     setEditingHorse(null); setShowHorseForm(false);
-  };
+  }, [isMounted]);
 
-   const handleAddHistoricalStay = () => {
+  useEffect(() => {
+    setIsMounted(true);
+    if (authLoading) return;
+    if (!userProfile || userProfile.role !== "jefe de cuadra") {
+      setError(tHorses('accessDenied'));
+      setIsLoading(false);
+      return;
+    }
+    
+    if (!activeStableId) {
+      setError(tHorses('createOrSelectStable'));
+      setIsLoading(false);
+      return;
+    }
+
+    const fetchHorsesAndJinetes = async () => {
+      const currentStableId = activeStableId;
+      if (!currentStableId) {
+        if (!authLoading) {
+          setError("No estás asignado a ninguna cuadra activa.");
+          setHorses([]);
+          setJinetes([]);
+        }
+        setIsLoading(false);
+        return;
+      }
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const stableDocRef = doc(db, "stables", currentStableId);
+        const stableDocSnap = await getDoc(stableDocRef);
+
+        if (!stableDocSnap.exists()) {
+          setError("No se encontró la cuadra activa.");
+          setHorses([]);
+          setJinetes([]);
+          setIsLoading(false);
+          return;
+        }
+
+        const stableData = stableDocSnap.data() as Stable;
+        const horsesQuery = query(collection(db, "horses"), where("stableId", "==", currentStableId));
+        const horsesQuerySnapshot = await getDocs(horsesQuery);
+        const fetchedHorses = horsesQuerySnapshot.docs.map(doc => convertHorseDatesFromFirestore({id: doc.id, ...doc.data()}));
+
+        const jineteIdsAprobados = stableData.members.filter(memberId => memberId !== stableData.ownerId);
+        let fetchedJinetes: UserProfile[] = [];
+        if (jineteIdsAprobados.length > 0) {
+          const perfilesPromises = jineteIdsAprobados.map(id => getDoc(doc(db, "users", id)));
+          const perfilesDocs = await Promise.all(perfilesPromises);
+          fetchedJinetes = perfilesDocs.filter(docSnap => docSnap.exists()).map(docSnap => docSnap.data() as UserProfile);
+        }
+
+        // Solo actualizar estado si el componente sigue montado
+        if (isMounted) {
+          setHorses(fetchedHorses);
+          setJinetes(fetchedJinetes);
+        }
+      } catch (err: any) {
+        console.error("Error al cargar caballos y jinetes:", err);
+        if (isMounted) {
+          setError(`No se pudo cargar la lista de caballos. ${err.message || ''} Código: ${err.code || 'N/A'}`);
+          if (toast) toast({ title: "Error de Carga", description: `No se pudo cargar la lista. Código: ${err.code || 'N/A'}. Mensaje: ${err.message || ''}`, variant: "destructive", duration: 7000 });
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+    fetchHorsesAndJinetes();
+    return () => {
+      setIsMounted(false);
+    };
+  }, [userProfile, authLoading, activeStableId, toast, db, convertHorseDatesFromFirestore, tHorses, isMounted]);
+
+  useEffect(() => {
+    if (selectedHorseForCalendar) {
+      const fetchAssignments = async () => {
+        if (!selectedHorseForCalendar || !isMounted) return;
+        setIsCalendarLoading(true);
+        try {
+          const assignmentsQuery = query(collection(db, 'horseAssignments'), where('stableId', '==', activeStableId), where('horseName', '==', selectedHorseForCalendar.name));
+          const assignmentsSnapshot = await getDocs(assignmentsQuery);
+          const assignments = assignmentsSnapshot.docs.map(doc => ({ 
+            id: doc.id, 
+            ...doc.data(),
+            date: (doc.data().date as Timestamp).toDate()
+          } as HorseAssignment));
+          
+          // Solo actualizar estado si el componente sigue montado
+          if (isMounted) {
+            setHorseAssignmentsForCalendar(assignments);
+          }
+        } catch (error) {
+          console.error('Error fetching assignments:', error);
+          if (isMounted && toast) {
+            toast({ title: 'Error', description: 'No se pudieron cargar las asignaciones del caballo.', variant: 'destructive' });
+          }
+        } finally {
+          if (isMounted) {
+            setIsCalendarLoading(false);
+          }
+        }
+      };
+      fetchAssignments();
+    } else {
+      // Limpiar las asignaciones cuando no hay caballo seleccionado
+      if (isMounted) {
+        setHorseAssignmentsForCalendar([]);
+        setSelectedDateForDetails(null);
+      }
+    }
+  }, [selectedHorseForCalendar, activeStableId, db, toast, isMounted]);
+
+   const handleAddHistoricalStay = useCallback(() => {
+    if (!isMounted) return;
+    
     if (!newHistoricalEntryDate && newHistoricalExitDate) {
       if (horseEntryDate && !horseExitDate) { 
         if (newHistoricalExitDate && startOfDay(newHistoricalExitDate) <= startOfDay(horseEntryDate)) {
-          if(toast) toast({title: "Fecha Inválida", description: "La fecha de salida debe ser posterior a la fecha de ingreso principal.", variant: "destructive"});
+          if(toast) toast({title: t('error'), description: "La fecha de salida debe ser posterior a la fecha de ingreso principal.", variant: "destructive"});
           return;
         }
         setHorseExitDate(newHistoricalExitDate ? startOfDay(newHistoricalExitDate) : undefined);
-        if(toast) toast({title: "Salida Principal Actualizada", description: "La fecha de salida de la estancia principal se ha actualizado. Guarda los cambios del caballo."});
+        if(toast) toast({title: "Salida Principal Actualizada", description: "La fecha de salida de la estancia principal se ha actualizada. Guarda los cambios del caballo."});
         setNewHistoricalEntryDate(undefined); setNewHistoricalExitDate(undefined); setNewHistoricalNotes("");
         return; 
       } else if (horseEntryDate && horseExitDate) {
@@ -226,146 +278,122 @@ export default function GestionCaballosPage() {
     }]);
     setNewHistoricalEntryDate(undefined); setNewHistoricalExitDate(undefined); setNewHistoricalNotes("");
     if(toast) toast({title: "Estancia Añadida al Formulario", description: "Recuerda guardar los cambios del caballo."});
-  };
+  }, [isMounted, newHistoricalEntryDate, newHistoricalExitDate, newHistoricalNotes, horseEntryDate, horseExitDate, horseHistoricalStays, toast, t]);
 
-
-  const handleRemoveHistoricalStay = (indexToRemove: number) => {
+  const handleRemoveHistoricalStay = useCallback((indexToRemove: number) => {
+    if (!isMounted) return;
     setHorseHistoricalStays(horseHistoricalStays.filter((_, index) => index !== indexToRemove));
      if(toast) toast({ title: "Estancia Eliminada del Formulario", description: "Recuerda guardar los cambios."});
-  };
+  }, [isMounted, horseHistoricalStays, toast]);
 
   const handleSubmitHorse = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!horseName.trim() || !activeStableId ) {
-      if(toast) toast({ title: "Error", description: "El nombre del caballo es requerido y necesitas una cuadra.", variant: "destructive" }); return;
-    }
+    if (!isMounted) return; // Guard temprano
     setIsSubmitting(true);
 
-    let finalHistoricalStays: HistoricalStayForm[] = [...horseHistoricalStays];
-    
-    if (horseEntryDate && horseExitDate && startOfDay(horseEntryDate) < startOfDay(horseExitDate)) {
-        const mainStayCandidate: HistoricalStayForm = {
-            entryDate: startOfDay(horseEntryDate),
-            exitDate: startOfDay(horseExitDate),
-            notes: editingHorse ? "Estancia principal (actualizada)" : "Estancia principal al crear",
-        };
-        const alreadyExists = finalHistoricalStays.some(
-            stay => isSameDay(stay.entryDate, mainStayCandidate.entryDate) &&
-                    ( (stay.exitDate && mainStayCandidate.exitDate && isSameDay(startOfDay(stay.exitDate), startOfDay(mainStayCandidate.exitDate))) || (!stay.exitDate && !mainStayCandidate.exitDate) )
-        );
-        if (!alreadyExists) {
-            finalHistoricalStays.unshift(mainStayCandidate);
-             if(toast) toast({ title: "Info", description: "Estancia principal añadida/actualizada en historial.", variant: "default", duration: 4000 });
-        }
-    } else if (horseEntryDate && !horseExitDate && !editingHorse) { 
-      const mainStayCandidate: HistoricalStayForm = {
-        entryDate: startOfDay(horseEntryDate),
-        exitDate: undefined,
-        notes: "Estancia principal al crear",
-      };
-      finalHistoricalStays.unshift(mainStayCandidate);
-      if(toast) toast({ title: "Info", description: "Estancia principal (abierta) añadida al historial.", variant: "default", duration: 4000 });
-    }
-
-
-    const horseDataForFirestore = {
-      stableId: activeStableId,
-      name: horseName.trim(),
-      breed: horseBreed.trim() || null,
-      age: horseAge && !isNaN(Number(horseAge)) ? Number(horseAge) : null,
-      notes: horseNotes.trim() || null,
-      imageUrl: horseImageUrl.trim() || null,
-      dataAiHint: horseBreed.trim().toLowerCase() || "horse",
-      ownerName: horseOwnerName.trim() || null,
-      entryDate: horseEntryDate ? Timestamp.fromDate(startOfDay(horseEntryDate)) : null,
-      exitDate: horseExitDate ? Timestamp.fromDate(startOfDay(horseExitDate)) : null,
-      farrierDueDate: horseFarrierDueDate ? Timestamp.fromDate(startOfDay(horseFarrierDueDate)) : null,
-      equipmentLocation: horseEquipmentLocation.trim() || null,
-      additionalCareNotes: horseAdditionalCareNotes.trim() || null,
-      historicalStays: finalHistoricalStays.map(s => ({
-        entryDate: Timestamp.fromDate(startOfDay(s.entryDate)),
-        exitDate: s.exitDate ? Timestamp.fromDate(startOfDay(s.exitDate)) : null,
-        notes: s.notes?.trim() || null,
-      })),
-    };
-
     try {
-      if (editingHorse) {
-        const horseRef = doc(db, "horses", editingHorse.id);
-        await updateDoc(horseRef, horseDataForFirestore);
-
-        const { stableId: idFromData, breed, age, notes: horseNotesInternal, imageUrl, ownerName, equipmentLocation, additionalCareNotes, dataAiHint, ...restOfHorseFields } = horseDataForFirestore as any;
-        const updatedHorseObjectForState = normalizeHorseDatesForState({
-            id: editingHorse.id, 
-            stableId: activeStableId,
-            name: restOfHorseFields.name, // Asumiendo que name no es null
-            breed: breed === null ? undefined : breed,
-            age: age === null ? undefined : age,
-            notes: horseNotesInternal === null ? undefined : horseNotesInternal,
-            imageUrl: imageUrl === null ? undefined : imageUrl,
-            ownerName: ownerName === null ? undefined : ownerName,
-            equipmentLocation: equipmentLocation === null ? undefined : equipmentLocation,
-            additionalCareNotes: additionalCareNotes === null ? undefined : additionalCareNotes,
-            dataAiHint: dataAiHint === null ? undefined : dataAiHint,
-            ...restOfHorseFields, // Propagar cualquier otro campo restante que no sea null y sea seguro
-            entryDate: horseEntryDate ? startOfDay(horseEntryDate) : undefined,
-            exitDate: horseExitDate ? startOfDay(horseExitDate) : undefined,
-            farrierDueDate: horseFarrierDueDate ? startOfDay(horseFarrierDueDate) : undefined,
-            historicalStays: horseHistoricalStays.map(s => ({
-                notes: s.notes,
-                entryDate: startOfDay(s.entryDate as Date),
-                exitDate: s.exitDate ? startOfDay(s.exitDate) : undefined,
-            })),
-            createdAt: editingHorse.createdAt, 
-            updatedAt: new Date(), 
-        });
-        setHorses(prevHorses => prevHorses.map(h => h.id === editingHorse.id ? updatedHorseObjectForState : h));
-        if (selectedHorseForCalendar && selectedHorseForCalendar.id === editingHorse.id) {
-            setSelectedHorseForCalendar(updatedHorseObjectForState);
-        }
-        if(toast) toast({ title: "Caballo Actualizado" });
-      } else {
-        const docRef = await addDoc(collection(db, "horses"), horseDataForFirestore);
-        
-        const { stableId: idFromData, breed, age, notes: horseNotesInternal, imageUrl, ownerName, equipmentLocation, additionalCareNotes, dataAiHint, ...restOfHorseFields } = horseDataForFirestore as any; 
-        const newHorseForState = normalizeHorseDatesForState({
-            id: docRef.id, 
-            stableId: activeStableId,
-          name: restOfHorseFields.name, // Asumiendo que name no es null
-          breed: breed === null ? undefined : breed,
-          age: age === null ? undefined : age,
-          notes: horseNotesInternal === null ? undefined : horseNotesInternal,
-          imageUrl: imageUrl === null ? undefined : imageUrl,
-          ownerName: ownerName === null ? undefined : ownerName,
-          equipmentLocation: equipmentLocation === null ? undefined : equipmentLocation,
-          additionalCareNotes: additionalCareNotes === null ? undefined : additionalCareNotes,
-          dataAiHint: dataAiHint === null ? undefined : dataAiHint,
-          ...restOfHorseFields, // Propagar cualquier otro campo restante que no sea null y sea seguro
-            entryDate: horseEntryDate ? startOfDay(horseEntryDate) : undefined,
-            exitDate: horseExitDate ? startOfDay(horseExitDate) : undefined,
-            farrierDueDate: horseFarrierDueDate ? startOfDay(horseFarrierDueDate) : undefined,
-          historicalStays: horseHistoricalStays.map(s => ({
-            notes: s.notes,
-            entryDate: startOfDay(s.entryDate as Date),
-            exitDate: s.exitDate ? startOfDay(s.exitDate) : undefined,
-            })),
-            createdAt: new Date(), 
-            updatedAt: new Date(), 
-        });
-
-        setHorses([...horses, newHorseForState]);
-        if(toast) toast({ title: "Caballo Añadido" });
+      if (!userProfile || !activeStableId) {
+        if (isMounted && toast) toast({ title: t('error'), description: tHorses('authRequired'), variant: 'destructive' });
+        return;
       }
-      resetForm();
+
+      if (!horseName.trim()) {
+        if (isMounted && toast) toast({ title: t('error'), description: "El nombre del caballo es requerido.", variant: 'destructive' });
+        return;
+      }
+
+      let finalHistoricalStays: HistoricalStayForm[] = [...horseHistoricalStays];
+      
+      if (horseEntryDate && horseExitDate && startOfDay(horseEntryDate) < startOfDay(horseExitDate)) {
+          const mainStayCandidate: HistoricalStayForm = {
+              entryDate: startOfDay(horseEntryDate),
+              exitDate: startOfDay(horseExitDate),
+              notes: editingHorse ? "Estancia principal (actualizada)" : "Estancia principal al crear",
+          };
+          const alreadyExists = finalHistoricalStays.some(
+              stay => isSameDay(stay.entryDate, mainStayCandidate.entryDate) &&
+                      ( (stay.exitDate && mainStayCandidate.exitDate && isSameDay(startOfDay(stay.exitDate), startOfDay(mainStayCandidate.exitDate))) || (!stay.exitDate && !mainStayCandidate.exitDate) )
+          );
+          if (!alreadyExists) {
+              finalHistoricalStays.unshift(mainStayCandidate);
+               if(toast) toast({ title: "Info", description: "Estancia principal añadida/actualizada en historial.", variant: "default", duration: 4000 });
+          }
+      } else if (horseEntryDate && !horseExitDate && !editingHorse) { 
+        const mainStayCandidate: HistoricalStayForm = {
+          entryDate: startOfDay(horseEntryDate),
+          exitDate: undefined,
+          notes: "Estancia principal al crear",
+        };
+        finalHistoricalStays.unshift(mainStayCandidate);
+        if(toast) toast({ title: "Info", description: "Estancia principal (abierta) añadida al historial.", variant: "default", duration: 4000 });
+      }
+
+
+      const horseDataForFirestore = {
+        stableId: activeStableId,
+        name: horseName.trim(),
+        breed: horseBreed.trim() || null,
+        age: horseAge && !isNaN(Number(horseAge)) ? Number(horseAge) : null,
+        notes: horseNotes.trim() || null,
+        imageUrl: horseImageUrl.trim() || null,
+        dataAiHint: horseBreed.trim().toLowerCase() || "horse",
+        ownerName: horseOwnerName.trim() || null,
+        entryDate: horseEntryDate ? Timestamp.fromDate(startOfDay(horseEntryDate)) : null,
+        exitDate: horseExitDate ? Timestamp.fromDate(startOfDay(horseExitDate)) : null,
+        farrierDueDate: horseFarrierDueDate ? Timestamp.fromDate(startOfDay(horseFarrierDueDate)) : null,
+        equipmentLocation: horseEquipmentLocation.trim() || null,
+        additionalCareNotes: horseAdditionalCareNotes.trim() || null,
+        historicalStays: finalHistoricalStays.map(s => ({
+          entryDate: Timestamp.fromDate(startOfDay(s.entryDate)),
+          exitDate: s.exitDate ? Timestamp.fromDate(startOfDay(s.exitDate)) : null,
+          notes: s.notes?.trim() || null,
+        })),
+      };
+
+      if (editingHorse) {
+        // Actualizar caballo existente
+        await updateDoc(doc(db, 'horses', editingHorse.id), horseDataForFirestore);
+        if (isMounted) {
+          const updatedHorse = normalizeHorseDatesForState({ 
+            id: editingHorse.id, 
+            ...horseDataForFirestore 
+          } as any);
+          setHorses(prev => prev.map(h => h.id === editingHorse.id ? updatedHorse : h));
+          if (toast) toast({ title: t('success'), description: tHorses('horseUpdated'), variant: 'default' });
+          resetForm();
+        }
+      } else {
+        // Crear nuevo caballo
+        const docRef = await addDoc(collection(db, 'horses'), horseDataForFirestore);
+        if (isMounted) {
+          const newHorse = normalizeHorseDatesForState({ 
+            id: docRef.id, 
+            ...horseDataForFirestore 
+          } as any);
+          setHorses(prev => [...prev, newHorse]);
+          if (toast) toast({ title: t('success'), description: tHorses('horseCreated'), variant: 'default' });
+          resetForm();
+        }
+      }
     } catch (err: any) {
-      console.error("Error al guardar caballo:", err);
-      if(toast) toast({ title: "Error", description: `No se pudo guardar el caballo. ${err.message || ''} Código: ${err.code || 'N/A'}`, variant: "destructive" });
+      console.error('Error saving horse:', err);
+      if (isMounted && toast) {
+        toast({ 
+          title: t('error'), 
+          description: editingHorse ? tHorses('errorUpdating') : tHorses('errorCreating'), 
+          variant: 'destructive' 
+        });
+      }
     } finally {
-      setIsSubmitting(false);
+      if (isMounted) {
+        setIsSubmitting(false);
+      }
     }
   };
 
-  const handleEditHorse = (horse: Horse) => {
+  const handleEditHorse = useCallback((horse: Horse) => {
+    if (!isMounted) return;
+    
     const normalizedHorse = normalizeHorseDatesForState(horse); 
     setEditingHorse(normalizedHorse);
     setHorseName(normalizedHorse.name);
@@ -407,24 +435,35 @@ export default function GestionCaballosPage() {
       })).filter(s => s.entryDate) || [] // Filtramos por si entryDate fuera undefined teóricamente
     );
     setShowHorseForm(true);
-  };
+  }, [isMounted, normalizeHorseDatesForState]);
 
-  const handleDeleteHorse = async (horseId: string) => {
+  const handleDeleteHorse = useCallback(async (horseId: string) => {
+    if (!isMounted) return; // Guard temprano
     setIsSubmitting(true);
     try {
-      await deleteDoc(doc(db, "horses", horseId));
-      setHorses(horses.filter(h => h.id !== horseId));
-      if(toast) toast({ title: "Caballo Eliminado" });
-      if (selectedHorseForCalendar?.id === horseId) setSelectedHorseForCalendar(null);
+      await deleteDoc(doc(db, 'horses', horseId));
+      if (isMounted) {
+        setHorses(prev => prev.filter(h => h.id !== horseId));
+        if (selectedHorseForCalendar?.id === horseId) {
+          setSelectedHorseForCalendar(null);
+        }
+        if (toast) toast({ title: t('success'), description: tHorses('horseDeleted'), variant: 'default' });
+      }
     } catch (err: any) {
-      console.error("Error al eliminar caballo:", err);
-      if(toast) toast({ title: "Error", description: `No se pudo eliminar el caballo. ${err.message || ''} Código: ${err.code || 'N/A'}`, variant: "destructive" });
+      console.error('Error deleting horse:', err);
+      if (isMounted && toast) {
+        toast({ title: t('error'), description: tHorses('errorDeleting'), variant: 'destructive' });
+      }
     } finally {
-      setIsSubmitting(false);
+      if (isMounted) {
+        setIsSubmitting(false);
+      }
     }
-  };
+  }, [isMounted, db, selectedHorseForCalendar, toast, t, tHorses]);
 
-  const handleSelectHorseForCalendar = (horse: Horse | null) => {
+  const handleSelectHorseForCalendar = useCallback((horse: Horse | null) => {
+    if (!isMounted) return;
+    
     if (selectedHorseForCalendar && selectedHorseForCalendar.id === horse?.id) {
       setSelectedHorseForCalendar(null);
       setHorseAssignmentsForCalendar([]);
@@ -443,9 +482,12 @@ export default function GestionCaballosPage() {
         setActivityCalendarMonth(new Date());
       }
     }
-  };
+  }, [isMounted, selectedHorseForCalendar, normalizeHorseDatesForState]);
 
-  const isFormVisible = editingHorse !== null || showHorseForm;
+  // Protección temprana contra renderizado durante desmontaje
+  if (!isMounted) {
+    return null;
+  }
 
   if (authLoading || !activeStableId) { 
     return (
@@ -459,51 +501,51 @@ export default function GestionCaballosPage() {
     return (
       <Alert variant="default" className="max-w-lg mx-auto">
           <AlertCircle className="h-4 w-4" />
-          <AlertTitle>No tienes una cuadra activa</AlertTitle>
+          <AlertTitle>{tHorses('noActiveStable')}</AlertTitle>
           <AlertDescription>
-          Por favor, <Link href="/profile" className="text-primary underline">crea o selecciona una cuadra</Link> para gestionar caballos.
+          {tHorses('pleaseJoin')} <Link href="/profile" className="text-primary underline">{tHorses('createOrSelectStable')}</Link> {tHorses('toManageHorses')}
           </AlertDescription>
       </Alert>
     );
   }
   
   if (error && !isLoading) {
-     return <Alert variant="destructive" className="max-w-lg mx-auto"><AlertCircle className="h-4 w-4" /><AlertTitle>Error</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>;
+     return <Alert variant="destructive" className="max-w-lg mx-auto"><AlertCircle className="h-4 w-4" /><AlertTitle>{t('error')}</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>;
   }
 
 
   return (
-    <div className="container mx-auto py-8 space-y-8">
+    <StableWrapper className="container mx-auto py-8 space-y-8">
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2"><PlusCircle className="h-6 w-6" />{editingHorse ? "Editar Caballo" : "Añadir Nuevo Caballo"}</CardTitle>
-            {!editingHorse && (<Button variant="ghost" size="icon" onClick={() => setShowHorseForm(!showHorseForm)} aria-expanded={showHorseForm} disabled={isSubmitting}>{showHorseForm ? <ChevronUp /> : <ChevronDown />}<span className="sr-only">{showHorseForm ? "Ocultar Formulario" : "Mostrar Formulario"}</span></Button>)}
+            <CardTitle className="flex items-center gap-2"><PlusCircle className="h-6 w-6" />{editingHorse ? tHorses('editHorseDetails') : tHorses('addNewHorse')}</CardTitle>
+            {!editingHorse && (<Button variant="ghost" size="icon" onClick={() => setShowHorseForm(!showHorseForm)} aria-expanded={showHorseForm} disabled={isSubmitting}>{showHorseForm ? <ChevronUp /> : <ChevronDown />}<span className="sr-only">{showHorseForm ? tHorses('hideForm') : tHorses('showForm')}</span></Button>)}
           </div>
-          <CardDescription>{editingHorse ? "Modifica los detalles del caballo." : showHorseForm ? "Completa los datos para añadir un nuevo caballo." : "Haz clic en la flecha para mostrar el formulario y añadir un nuevo caballo."}</CardDescription>
+          <CardDescription>{editingHorse ? tHorses('modifyDetails') : showHorseForm ? tHorses('completeDataToAdd') : tHorses('clickToShowForm')}</CardDescription>
         </CardHeader>
-        {isFormVisible && (
+        {(editingHorse !== null || showHorseForm) && (
           <form onSubmit={handleSubmitHorse}>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><Label htmlFor="horseNameJefe">Nombre del Caballo</Label><Input id="horseNameJefe" value={horseName} onChange={(e) => setHorseName(e.target.value)} required disabled={isSubmitting} /></div>
-                <div><Label htmlFor="horseBreedJefe">Raza (Opcional)</Label><Input id="horseBreedJefe" value={horseBreed} onChange={(e) => setHorseBreed(e.target.value)} disabled={isSubmitting} /></div>
+                <div><Label htmlFor="horseNameJefe">{tHorses('horseName')}</Label><Input id="horseNameJefe" value={horseName} onChange={(e) => setHorseName(e.target.value)} required disabled={isSubmitting} /></div>
+                <div><Label htmlFor="horseBreedJefe">{tHorses('breed')} ({t('optional')})</Label><Input id="horseBreedJefe" value={horseBreed} onChange={(e) => setHorseBreed(e.target.value)} disabled={isSubmitting} /></div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><Label htmlFor="horseAgeJefe">Edad (Opcional)</Label><Input id="horseAgeJefe" type="number" value={horseAge} onChange={(e) => setHorseAge(e.target.value)} disabled={isSubmitting} /></div>
-                <div><Label htmlFor="horseOwnerNameJefe">Nombre del Dueño (Opcional)</Label><Input id="horseOwnerNameJefe" value={horseOwnerName} onChange={(e) => setHorseOwnerName(e.target.value)} disabled={isSubmitting} /></div>
+                <div><Label htmlFor="horseAgeJefe">{tHorses('age')} ({t('optional')})</Label><Input id="horseAgeJefe" type="number" value={horseAge} onChange={(e) => setHorseAge(e.target.value)} disabled={isSubmitting} /></div>
+                <div><Label htmlFor="horseOwnerNameJefe">{tHorses('ownerName')} ({t('optional')})</Label><Input id="horseOwnerNameJefe" value={horseOwnerName} onChange={(e) => setHorseOwnerName(e.target.value)} disabled={isSubmitting} /></div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><Label htmlFor="horseEntryDateJefe">Fecha Ingreso Principal</Label><Popover><PopoverTrigger asChild><Button id="horseEntryDateJefe" variant="outline" className={`w-full justify-start text-left font-normal ${!horseEntryDate && "text-muted-foreground"}`} disabled={isSubmitting}><CalendarIcon className="mr-2 h-4 w-4" />{horseEntryDate ? format(startOfDay(horseEntryDate), "PPP", { locale: es }) : "Selecciona fecha"}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={horseEntryDate} onSelect={(date) => setHorseEntryDate(date ? startOfDay(date) : undefined)} initialFocus disabled={isSubmitting}/></PopoverContent></Popover></div>
-                <div><Label htmlFor="horseExitDateJefe">Fecha Salida Principal</Label><Popover><PopoverTrigger asChild><Button id="horseExitDateJefe" variant="outline" className={`w-full justify-start text-left font-normal ${!horseExitDate && "text-muted-foreground"}`} disabled={isSubmitting}><CalendarIcon className="mr-2 h-4 w-4" />{horseExitDate ? format(startOfDay(horseExitDate), "PPP", { locale: es }) : "Indefinido"}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={horseExitDate} onSelect={(date) => setHorseExitDate(date ? startOfDay(date) : undefined)} initialFocus disabled={isSubmitting}/></PopoverContent></Popover></div>
+                <div><Label htmlFor="horseEntryDateJefe">{tHorses('entryDate')} ({t('optional')})</Label><Popover><PopoverTrigger asChild><Button id="horseEntryDateJefe" variant="outline" className={`w-full justify-start text-left font-normal ${!horseEntryDate && "text-muted-foreground"}`} disabled={isSubmitting}><CalendarIcon className="mr-2 h-4 w-4" />{horseEntryDate ? format(startOfDay(horseEntryDate), "PPP", { locale: es }) : tHorses('selectDate')}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={horseEntryDate} onSelect={(date) => setHorseEntryDate(date ? startOfDay(date) : undefined)} initialFocus disabled={isSubmitting}/></PopoverContent></Popover></div>
+                <div><Label htmlFor="horseExitDateJefe">{tHorses('exitDate')} ({t('optional')})</Label><Popover><PopoverTrigger asChild><Button id="horseExitDateJefe" variant="outline" className={`w-full justify-start text-left font-normal ${!horseExitDate && "text-muted-foreground"}`} disabled={isSubmitting}><CalendarIcon className="mr-2 h-4 w-4" />{horseExitDate ? format(startOfDay(horseExitDate), "PPP", { locale: es }) : t('undefined')}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={horseExitDate} onSelect={(date) => setHorseExitDate(date ? startOfDay(date) : undefined)} initialFocus disabled={isSubmitting}/></PopoverContent></Popover></div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><Label htmlFor="horseFarrierDueDateJefe">Próxima Fecha Herrador (Opcional)</Label><Popover><PopoverTrigger asChild><Button id="horseFarrierDueDateJefe" variant="outline" className={`w-full justify-start text-left font-normal ${!horseFarrierDueDate && "text-muted-foreground"}`} disabled={isSubmitting}><CalendarIcon className="mr-2 h-4 w-4" />{horseFarrierDueDate ? format(startOfDay(horseFarrierDueDate), "PPP", { locale: es }) : "Selecciona fecha"}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={horseFarrierDueDate} onSelect={(date) => setHorseFarrierDueDate(date ? startOfDay(date) : undefined)} initialFocus disabled={isSubmitting}/></PopoverContent></Popover></div>
-                <div><Label htmlFor="horseImageUrlJefe">URL de Imagen (Opcional)</Label><Input id="horseImageUrlJefe" value={horseImageUrl} onChange={(e) => setHorseImageUrl(e.target.value)} placeholder="https://placehold.co/600x400.png" disabled={isSubmitting} /></div>
+                <div><Label htmlFor="horseFarrierDueDateJefe">{tHorses('farrierDate')} ({t('optional')})</Label><Popover><PopoverTrigger asChild><Button id="horseFarrierDueDateJefe" variant="outline" className={`w-full justify-start text-left font-normal ${!horseFarrierDueDate && "text-muted-foreground"}`} disabled={isSubmitting}><CalendarIcon className="mr-2 h-4 w-4" />{horseFarrierDueDate ? format(startOfDay(horseFarrierDueDate), "PPP", { locale: es }) : tHorses('selectDate')}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={horseFarrierDueDate} onSelect={(date) => setHorseFarrierDueDate(date ? startOfDay(date) : undefined)} initialFocus disabled={isSubmitting}/></PopoverContent></Popover></div>
+                <div><Label htmlFor="horseImageUrlJefe">{tHorses('imageUrl')} ({t('optional')})</Label><Input id="horseImageUrlJefe" value={horseImageUrl} onChange={(e) => setHorseImageUrl(e.target.value)} placeholder="https://placehold.co/600x400.png" disabled={isSubmitting} /></div>
               </div>
-              <div><Label htmlFor="horseEquipmentLocationJefe">Ubicación del Material (Opcional)</Label><Input id="horseEquipmentLocationJefe" value={horseEquipmentLocation} onChange={(e) => setHorseEquipmentLocation(e.target.value)} placeholder="Ej: Box 3, guadarnés principal" disabled={isSubmitting} /></div>
-              <div><Label htmlFor="horseNotesJefe">Notas Generales del Caballo (Opcional)</Label><Textarea id="horseNotesJefe" value={horseNotes} onChange={(e) => setHorseNotes(e.target.value)} placeholder="Comportamiento, preferencias, etc." disabled={isSubmitting} /></div>
-              <div><Label htmlFor="horseAdditionalCareNotesJefe">Notas Adicionales de Cuidado (Opcional)</Label><Textarea id="horseAdditionalCareNotesJefe" value={horseAdditionalCareNotes} onChange={(e) => setHorseAdditionalCareNotes(e.target.value)} placeholder="Suplementos, cuidados especiales, etc." disabled={isSubmitting} /></div>
+              <div><Label htmlFor="horseEquipmentLocationJefe">{tHorses('equipmentLocation')} ({t('optional')})</Label><Input id="horseEquipmentLocationJefe" value={horseEquipmentLocation} onChange={(e) => setHorseEquipmentLocation(e.target.value)} disabled={isSubmitting} /></div>
+              <div><Label htmlFor="horseNotesJefe">{tHorses('notes')} ({t('optional')})</Label><Textarea id="horseNotesJefe" value={horseNotes} onChange={(e) => setHorseNotes(e.target.value)} disabled={isSubmitting} /></div>
+              <div><Label htmlFor="horseAdditionalCareNotesJefe">{tHorses('additionalCareNotes')} ({t('optional')})</Label><Textarea id="horseAdditionalCareNotesJefe" value={horseAdditionalCareNotes} onChange={(e) => setHorseAdditionalCareNotes(e.target.value)} disabled={isSubmitting} /></div>
 
               {editingHorse && (
                 <div className="mt-6 pt-4 border-t">
@@ -556,8 +598,11 @@ export default function GestionCaballosPage() {
               )}
             </CardContent>
             <CardFooter className="flex justify-end gap-2">
-              {editingHorse && <Button type="button" variant="outline" onClick={resetForm} disabled={isSubmitting}>Cancelar Edición</Button>}
-              <Button type="submit" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{editingHorse ? "Guardar Cambios" : "Añadir Caballo"}</Button>
+              {editingHorse && <Button type="button" variant="outline" onClick={resetForm} disabled={isSubmitting}>{tHorses('cancelEdit')}</Button>}
+              <Button type="submit" disabled={isSubmitting}>
+                <Loader2 className={`mr-2 h-4 w-4 animate-spin ${isSubmitting ? 'opacity-100' : 'opacity-0 w-0 mr-0'}`} />
+                {editingHorse ? tHorses('saveChanges') : tHorses('addHorse')}
+              </Button>
             </CardFooter>
           </form>
         )}
@@ -710,6 +755,6 @@ export default function GestionCaballosPage() {
           </CardContent>
         </Card>
       )}
-    </div>
+    </StableWrapper>
   );
 }

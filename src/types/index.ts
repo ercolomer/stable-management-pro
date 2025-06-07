@@ -1,6 +1,6 @@
 import type { Timestamp } from "firebase/firestore";
 
-export type UserRole = "jinete" | "jefe de cuadra";
+export type UserRole = "jinete" | "jefe de cuadra" | "mozo de cuadra";
 
 // Interfaz UserProfile revertida a cuadra única
 export interface UserProfile {

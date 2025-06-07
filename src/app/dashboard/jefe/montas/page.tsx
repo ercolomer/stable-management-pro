@@ -17,10 +17,11 @@ import { Calendar } from "@/components/ui/calendar";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, PlusCircle, Edit2, Trash2, CalendarIcon, AlertCircle, CheckCircle2, Circle } from "lucide-react";
-import { format } from "date-fns";
+import { format, startOfDay } from "date-fns";
 import { es } from "date-fns/locale";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 
 // Icono de caballo personalizado
 const CustomHorseIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -36,6 +37,11 @@ export default function GestionMontasPage() {
   const db = getDb();
   const { userProfile, loading: authLoading, activeStableId } = useAuth();
   const { toast } = useToast();
+  const t = useTranslations("common");
+  const tRides = useTranslations("rides");
+
+  // NUEVO: Estado para el filtro de fecha
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
 
   const [jinetes, setJinetes] = useState<UserProfile[]>([]);
   const [horses, setHorses] = useState<Pick<Horse, 'id' | 'name' | 'stableId'>[]>([]);
@@ -50,6 +56,27 @@ export default function GestionMontasPage() {
   const [notes, setNotes] = useState("");
   const [editingAssignment, setEditingAssignment] = useState<HorseAssignment | null>(null);
   
+  // NUEVO: Función para filtrar montas por fecha seleccionada
+  const filteredAssignments = useMemo(() => {
+    if (!selectedDate || assignments.length === 0) return assignments;
+    
+    const selectedDateStart = startOfDay(selectedDate);
+    
+    return assignments.filter(assignment => {
+      const assignmentDate = assignment.date instanceof Timestamp ? assignment.date.toDate() : new Date(assignment.date);
+      const assignmentDateStart = startOfDay(assignmentDate);
+      
+      return assignmentDateStart.getTime() === selectedDateStart.getTime();
+    });
+  }, [assignments, selectedDate]);
+
+  // NUEVO: Estadísticas para el día seleccionado
+  const dayStats = useMemo(() => {
+    const completed = filteredAssignments.filter(assignment => assignment.isCompleted).length;
+    const pending = filteredAssignments.filter(assignment => !assignment.isCompleted).length;
+    
+    return { total: filteredAssignments.length, completed, pending };
+  }, [filteredAssignments]);
 
   const normalizeAssignmentDates = (assignment: HorseAssignment): HorseAssignment => {
     return {
@@ -67,13 +94,13 @@ export default function GestionMontasPage() {
     const stableIdToUse = activeStableId;
 
     if (!stableIdToUse) {
-      setError("No estás asignado a ninguna cuadra activa.");
+      setError(tRides('notAssignedToStable'));
       setIsLoading(false);
       return;
     }
     
     if (userProfile && userProfile.role !== "jefe de cuadra") {
-      setError("Acceso denegado. Debes ser jefe de cuadra.");
+      setError(tRides('accessDeniedChief'));
       setIsLoading(false);
       return;
     }
@@ -294,14 +321,101 @@ export default function GestionMontasPage() {
 
   return (
     <div className="container mx-auto py-8 space-y-8">
+      {/* NUEVO: Selector de fecha para filtrar montas */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CalendarIcon className="h-6 w-6" />
+            Filtrar Montas por Día
+          </CardTitle>
+          <CardDescription>
+            Selecciona un día para ver solo las montas programadas para esa fecha
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
+            <div className="flex-1">
+              <Label htmlFor="dateFilterMontas">Fecha Seleccionada</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    id="dateFilterMontas"
+                    variant="outline"
+                    className="w-full md:w-auto justify-start text-left font-normal"
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {format(selectedDate, "EEEE, dd 'de' MMMM, yyyy", { locale: es })}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={(date) => date && setSelectedDate(startOfDay(date))}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            
+            {/* Estadísticas del día */}
+            <div className="flex gap-2 flex-wrap">
+              <div className="bg-blue-50 dark:bg-blue-900/30 px-3 py-1 rounded-lg text-sm">
+                <span className="font-medium text-blue-700 dark:text-blue-300">Total: {dayStats.total}</span>
+              </div>
+              <div className="bg-green-50 dark:bg-green-900/30 px-3 py-1 rounded-lg text-sm">
+                <span className="font-medium text-green-700 dark:text-green-300">Completadas: {dayStats.completed}</span>
+              </div>
+              <div className="bg-yellow-50 dark:bg-yellow-900/30 px-3 py-1 rounded-lg text-sm">
+                <span className="font-medium text-yellow-700 dark:text-yellow-300">Pendientes: {dayStats.pending}</span>
+              </div>
+            </div>
+          </div>
+          
+          {/* Botones de navegación rápida */}
+          <div className="flex gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSelectedDate(startOfDay(new Date()))}
+              className={selectedDate.toDateString() === new Date().toDateString() ? "bg-primary text-primary-foreground" : ""}
+            >
+              Hoy
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const tomorrow = new Date();
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                setSelectedDate(startOfDay(tomorrow));
+              }}
+            >
+              Mañana
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const nextWeek = new Date();
+                nextWeek.setDate(nextWeek.getDate() + 7);
+                setSelectedDate(startOfDay(nextWeek));
+              }}
+            >
+              Próxima semana
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <PlusCircle className="h-6 w-6" />
-            {editingAssignment ? "Editar Asignación de Monta" : "Asignar Nueva Monta"}
+            {editingAssignment ? "Editar Monta" : "Nueva Asignación de Monta"}
           </CardTitle>
           <CardDescription>
-            {editingAssignment ? "Modifica los detalles de la monta." : "Asigna caballos a tus jinetes."}
+            {editingAssignment ? "Modifica los detalles de la monta." : "Asigna jinetes a caballos para montas específicas."}
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmitAssignment}>
@@ -377,14 +491,24 @@ export default function GestionMontasPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <CustomHorseIcon className="h-6 w-6" />
-            Montas Asignadas
+            Montas para {format(selectedDate, "EEEE, dd 'de' MMMM", { locale: es })}
           </CardTitle>
-          <CardDescription>Lista de todas las montas programadas.</CardDescription>
+          <CardDescription>
+            {filteredAssignments.length === 0 
+              ? `No hay montas programadas para ${format(selectedDate, "dd/MM/yyyy", { locale: es })}`
+              : `Mostrando ${filteredAssignments.length} monta${filteredAssignments.length === 1 ? '' : 's'} para el día seleccionado`
+            }
+          </CardDescription>
         </CardHeader>
         <CardContent>
           { isLoading ? (<div className="flex justify-center items-center p-8"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>) :
-            assignments.length === 0 ? (
-            <p className="text-muted-foreground">No hay montas asignadas.</p>
+            filteredAssignments.length === 0 ? (
+            <div className="text-center py-8 space-y-2">
+              <p className="text-muted-foreground">No hay montas programadas para este día.</p>
+              <p className="text-sm text-muted-foreground">
+                Puedes crear una nueva monta arriba o seleccionar otro día en el filtro.
+              </p>
+            </div>
           ) : (
             <Table>
               <TableHeader>
@@ -399,7 +523,7 @@ export default function GestionMontasPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {assignments.sort((a,b) => {
+                {filteredAssignments.sort((a,b) => {
                   const dateA = a.date instanceof Timestamp ? a.date.toDate() : a.date;
                   const dateB = b.date instanceof Timestamp ? b.date.toDate() : b.date;
                   return new Date(dateA).getTime() - new Date(dateB).getTime();

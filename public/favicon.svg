@@ -1,0 +1,20 @@
+
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <rect width="32" height="32" fill="#059669"/>
+  <g transform="translate(4.8, 4.8) scale(0.22399999999999998)">
+    <!-- Cabeza del caballo -->
+    <path d="M20 30 Q25 20 35 25 Q45 20 50 30 Q48 40 45 45 L40 50 Q35 55 30 50 L25 45 Q22 40 20 30 Z" fill="white"/>
+    <!-- Ojo -->
+    <circle cx="35" cy="35" r="3" fill="#059669"/>
+    <!-- Crin -->
+    <path d="M35 25 Q40 15 50 20 Q55 25 50 30" fill="white" opacity="0.8"/>
+    <!-- Cuerpo -->
+    <ellipse cx="35" cy="70" rx="15" ry="25" fill="white"/>
+    <!-- Patas -->
+    <rect x="25" y="90" width="4" height="15" fill="white"/>
+    <rect x="35" y="90" width="4" height="15" fill="white"/>
+    <rect x="45" y="90" width="4" height="15" fill="white"/>
+    <!-- Texto -->
+    <text x="50" y="85" font-family="Arial, sans-serif" font-size="8" fill="white" font-weight="bold">SM</text>
+  </g>
+</svg>

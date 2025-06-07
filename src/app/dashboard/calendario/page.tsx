@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useEffect, useState, useMemo } from "react";
@@ -10,10 +9,12 @@ import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, AlertCircle, CalendarDays, ListChecks, Info } from "lucide-react";
 import { format, isSameDay, startOfDay } from "date-fns";
-import { es } from "date-fns/locale";
+import { es, enUS, de } from "date-fns/locale";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
+import { useTranslations } from 'next-intl';
+import { useLanguage } from '@/contexts/language-context';
 
 // Icono de caballo personalizado
 const CustomHorseIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -27,7 +28,21 @@ const CustomHorseIcon = (props: React.SVGProps<SVGSVGElement>) => (
 export default function CalendarioCuadraPage() {
   const db = getDb();
   const { userProfile, loading: authLoading, activeStableId } = useAuth();
-  const { toast } = useToast(); 
+  const { toast } = useToast();
+  const { locale } = useLanguage();
+
+  // Traducciones
+  const t = useTranslations('common');
+  const tCalendar = useTranslations('calendar');
+
+  // Determinar el locale para date-fns
+  const getDateFnsLocale = () => {
+    switch (locale) {
+      case 'en': return enUS;
+      case 'de': return de;
+      default: return es;
+    }
+  };
 
   const [tasks, setTasks] = useState<DailyTask[]>([]);
   const [assignments, setAssignments] = useState<HorseAssignment[]>([]);
@@ -48,7 +63,7 @@ export default function CalendarioCuadraPage() {
     const stableIdToUse = activeStableId;
 
     if (!stableIdToUse) {
-      setError("No estás asignado a ninguna cuadra. Únete o crea una para ver el calendario.");
+      setError(tCalendar('noStableError'));
       setIsLoading(false);
       return;
     }
@@ -100,9 +115,15 @@ export default function CalendarioCuadraPage() {
         }
       } catch (err: any) {
         console.error("Error al cargar datos para el calendario:", err);
-        setError(`No se pudo cargar la información del calendario. ${err.message || ''} Código: ${err.code || 'N/A'}`);
+        const errorMessage = `${tCalendar('loadError')} ${err.message || ''} ${tCalendar('errorCode')}: ${err.code || 'N/A'}`;
+        setError(errorMessage);
         if (toast) { 
-            toast({ title: "Error de Carga", description: `No se pudo cargar la información del calendario. Código: ${err.code || 'N/A'}. Mensaje: ${err.message || ''}`, variant: "destructive", duration: 7000});
+            toast({ 
+              title: tCalendar('loadErrorTitle'), 
+              description: `${tCalendar('loadError')} ${tCalendar('errorCode')}: ${err.code || 'N/A'}. ${tCalendar('errorMessage')}: ${err.message || ''}`, 
+              variant: "destructive", 
+              duration: 7000
+            });
         }
       } finally {
         setIsLoading(false);
@@ -115,21 +136,21 @@ export default function CalendarioCuadraPage() {
       setIsLoading(false);
     }
 
-  }, [userProfile, authLoading, activeStableId, toast, db]);
+  }, [userProfile, authLoading, activeStableId, toast, db, tCalendar]);
 
   const getJineteName = (uid: string | null | undefined) => {
-    if (!uid) return "Desconocido";
+    if (!uid) return tCalendar('unknown');
     const jinete = jinetes.find(j => j.uid === uid);
-    return jinete?.displayName || `ID Usuario: ${uid.substring(0, 6)}...`;
+    return jinete?.displayName || `${tCalendar('userId')}: ${uid.substring(0, 6)}...`;
   };
   
   const getAssignedToTextForTask = (task: DailyTask) => {
     if (task.assignmentScope === 'SPECIFIC_USER' && task.assignedTo) {
       return getJineteName(task.assignedTo);
     }
-    if (task.assignmentScope === 'ALL_MEMBERS_INDIVIDUALLY') return "Todos (Individual)";
-    if (task.assignmentScope === 'ANYONE_IN_STABLE') return "Cualquiera";
-    return "Desconocido";
+    if (task.assignmentScope === 'ALL_MEMBERS_INDIVIDUALLY') return tCalendar('allIndividual');
+    if (task.assignmentScope === 'ANYONE_IN_STABLE') return tCalendar('anyone');
+    return tCalendar('unknown');
   };
 
   const activitiesForSelectedDate = useMemo(() => {
@@ -154,28 +175,28 @@ export default function CalendarioCuadraPage() {
       const horseFarrierDate = horse.farrierDueDate ? startOfDay(horse.farrierDueDate instanceof Timestamp ? horse.farrierDueDate.toDate() : new Date(horse.farrierDueDate)) : null;
 
       if (horseEntryDate && isSameDay(horseEntryDate, sDate)) {
-        horseEvents.push({ type: "Ingreso Principal", horseName: horse.name, date: horseEntryDate });
+        horseEvents.push({ type: tCalendar('mainEntry'), horseName: horse.name, date: horseEntryDate });
       }
       if (horseExitDate && isSameDay(horseExitDate, sDate)) {
-        horseEvents.push({ type: "Salida Principal", horseName: horse.name, date: horseExitDate });
+        horseEvents.push({ type: tCalendar('mainExit'), horseName: horse.name, date: horseExitDate });
       }
       if (horseFarrierDate && isSameDay(horseFarrierDate, sDate)) {
-        horseEvents.push({ type: "Cita Herrador", horseName: horse.name, date: horseFarrierDate });
+        horseEvents.push({ type: tCalendar('farrierAppointment'), horseName: horse.name, date: horseFarrierDate });
       }
       horse.historicalStays?.forEach(stay => {
         const stayEntry = startOfDay(stay.entryDate instanceof Timestamp ? stay.entryDate.toDate() : new Date(stay.entryDate));
         const stayExit = stay.exitDate ? startOfDay(stay.exitDate instanceof Timestamp ? stay.exitDate.toDate() : new Date(stay.exitDate)) : null;
         if (isSameDay(stayEntry, sDate)) {
-          horseEvents.push({ type: "Ingreso Histórico", horseName: horse.name, date: stayEntry, notes: stay.notes });
+          horseEvents.push({ type: tCalendar('historicalEntry'), horseName: horse.name, date: stayEntry, notes: stay.notes });
         }
         if (stayExit && isSameDay(stayExit, sDate)) {
-          horseEvents.push({ type: "Salida Histórica", horseName: horse.name, date: stayExit, notes: stay.notes });
+          horseEvents.push({ type: tCalendar('historicalExit'), horseName: horse.name, date: stayExit, notes: stay.notes });
         }
       });
     });
 
     return { dailyTasks, dailyAssignments, horseEvents };
-  }, [selectedDate, tasks, assignments, horses, jinetes]); 
+  }, [selectedDate, tasks, assignments, horses, jinetes, tCalendar]); 
   
   const calendarModifiers = useMemo(() => {
     const eventDays = new Set<string>();
@@ -215,16 +236,16 @@ export default function CalendarioCuadraPage() {
     return (
       <Alert variant="default" className="max-w-lg mx-auto">
         <AlertCircle className="h-4 w-4" />
-        <AlertTitle>No tienes una cuadra activa</AlertTitle>
+        <AlertTitle>{tCalendar('noActiveStable')}</AlertTitle>
         <AlertDescription>
-          Por favor, <Link href="/profile" className="text-primary underline">crea o selecciona una cuadra</Link> para ver el calendario.
+          {tCalendar('pleaseCreate')} <Link href="/profile" className="text-primary underline">{tCalendar('createOrSelectStable')}</Link> {tCalendar('toViewCalendar')}.
         </AlertDescription>
       </Alert>
     );
   }
   
   if (error && !isLoading) {
-    return <Alert variant="destructive" className="max-w-lg mx-auto"><AlertCircle className="h-4 w-4" /><AlertTitle>Error</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>;
+    return <Alert variant="destructive" className="max-w-lg mx-auto"><AlertCircle className="h-4 w-4" /><AlertTitle>{t('error')}</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>;
   }
 
 
@@ -236,8 +257,8 @@ export default function CalendarioCuadraPage() {
         <>
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2"><CalendarDays className="h-6 w-6 text-primary" />Calendario de la Cuadra</CardTitle>
-              <CardDescription>Selecciona un día para ver todas las actividades y eventos programados para toda la cuadra.</CardDescription>
+              <CardTitle className="flex items-center gap-2"><CalendarDays className="h-6 w-6 text-primary" />{tCalendar('title')}</CardTitle>
+              <CardDescription>{tCalendar('description')}</CardDescription>
             </CardHeader>
           </Card>
 
@@ -248,7 +269,7 @@ export default function CalendarioCuadraPage() {
                   mode="single"
                   selected={selectedDate}
                   onSelect={(date) => setSelectedDate(date ? startOfDay(date) : undefined)}
-                  locale={es}
+                  locale={getDateFnsLocale()}
                   className="rounded-md border shadow-sm mx-auto"
                   modifiers={calendarModifiers}
                   modifiersClassNames={calendarModifiersClassNames}
@@ -261,68 +282,68 @@ export default function CalendarioCuadraPage() {
               {selectedDate ? (
                 <Card>
                   <CardHeader>
-                    <CardTitle>Actividades para el {format(selectedDate, "PPP", { locale: es })}</CardTitle>
+                    <CardTitle>{tCalendar('activitiesFor')} {format(selectedDate, "PPP", { locale: getDateFnsLocale() })}</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div>
-                      <h3 className="text-lg font-semibold mb-2 flex items-center gap-2"><ListChecks className="h-5 w-5 text-blue-600 dark:text-blue-400"/>Tareas del Día</h3>
+                      <h3 className="text-lg font-semibold mb-2 flex items-center gap-2"><ListChecks className="h-5 w-5 text-blue-600 dark:text-blue-400"/>{tCalendar('dailyTasks')}</h3>
                       {activitiesForSelectedDate.dailyTasks.length > 0 ? (
                         <ul className="space-y-2 text-sm">
                           {activitiesForSelectedDate.dailyTasks.map(task => (
                             <li key={task.id} className={`p-2 rounded-md ${task.isCompleted ? 'bg-green-100 dark:bg-green-800/40' : 'bg-amber-50 dark:bg-amber-800/30'}`}>
                               <p><strong>{task.description}</strong></p>
                               <p className="text-xs text-muted-foreground">
-                                Sugerida a: {getAssignedToTextForTask(task)}
+                                {tCalendar('suggestedTo')}: {getAssignedToTextForTask(task)}
                               </p>
                               {task.isCompleted ? (
-                                <p className="text-xs text-green-600 dark:text-green-400">Completada por: {getJineteName(task.completedBy)} el {task.completedAt ? format(task.completedAt instanceof Timestamp ? task.completedAt.toDate() : new Date(task.completedAt), "dd/MM/yy HH:mm", {locale: es}) : 'N/A'}</p>
+                                <p className="text-xs text-green-600 dark:text-green-400">{tCalendar('completedBy')}: {getJineteName(task.completedBy)} {tCalendar('on')} {task.completedAt ? format(task.completedAt instanceof Timestamp ? task.completedAt.toDate() : new Date(task.completedAt), "dd/MM/yy HH:mm", {locale: getDateFnsLocale()}) : 'N/A'}</p>
                               ) : (
-                                <p className="text-xs text-amber-600 dark:text-amber-400">Pendiente. {task.dueDate && `Vence: ${format(task.dueDate instanceof Timestamp ? task.dueDate.toDate() : new Date(task.dueDate), "dd/MM/yy")}`}</p>
+                                <p className="text-xs text-amber-600 dark:text-amber-400">{tCalendar('pending')}. {task.dueDate && `${tCalendar('dueDate')}: ${format(task.dueDate instanceof Timestamp ? task.dueDate.toDate() : new Date(task.dueDate), "dd/MM/yy")}`}</p>
                               )}
                             </li>
                           ))}
                         </ul>
-                      ) : (<p className="text-sm text-muted-foreground">No hay tareas para este día.</p>)}
+                      ) : (<p className="text-sm text-muted-foreground">{tCalendar('noTasksForDay')}</p>)}
                     </div>
                     <hr/>
                     <div>
-                      <h3 className="text-lg font-semibold mb-2 flex items-center gap-2"><CustomHorseIcon className="h-5 w-5 text-green-600 dark:text-green-400"/>Montas del Día</h3>
+                      <h3 className="text-lg font-semibold mb-2 flex items-center gap-2"><CustomHorseIcon className="h-5 w-5 text-green-600 dark:text-green-400"/>{tCalendar('dailyRides')}</h3>
                       {activitiesForSelectedDate.dailyAssignments.length > 0 ? (
                         <ul className="space-y-2 text-sm">
                           {activitiesForSelectedDate.dailyAssignments.map(assignment => (
                             <li key={assignment.id} className={`p-2 rounded-md ${assignment.isCompleted ? 'bg-green-100 dark:bg-green-800/40' : 'bg-gray-100 dark:bg-gray-700/40'}`}>
-                              <p><strong>{assignment.horseName}</strong> montado por <strong>{getJineteName(assignment.jineteId)}</strong></p>
-                              {assignment.notes && <p className="text-xs text-muted-foreground">Notas: {assignment.notes}</p>}
+                              <p><strong>{assignment.horseName}</strong> {tCalendar('riddenBy')} <strong>{getJineteName(assignment.jineteId)}</strong></p>
+                              {assignment.notes && <p className="text-xs text-muted-foreground">{tCalendar('notes')}: {assignment.notes}</p>}
                               {assignment.isCompleted ? (
-                                <p className="text-xs text-green-600 dark:text-green-400">Completada por: {getJineteName(assignment.completedBy)} el {assignment.completedAt ? format(assignment.completedAt instanceof Timestamp ? assignment.completedAt.toDate() : new Date(assignment.completedAt), "dd/MM/yy HH:mm", {locale: es}) : 'N/A'}</p>
+                                <p className="text-xs text-green-600 dark:text-green-400">{tCalendar('completedBy')}: {getJineteName(assignment.completedBy)} {tCalendar('on')} {assignment.completedAt ? format(assignment.completedAt instanceof Timestamp ? assignment.completedAt.toDate() : new Date(assignment.completedAt), "dd/MM/yy HH:mm", {locale: getDateFnsLocale()}) : 'N/A'}</p>
                               ) : (
-                                <p className="text-xs text-gray-500 dark:text-gray-400">Pendiente.</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">{tCalendar('pending')}.</p>
                               )}
                             </li>
                           ))}
                         </ul>
-                      ) : (<p className="text-sm text-muted-foreground">No hay montas programadas para este día.</p>)}
+                      ) : (<p className="text-sm text-muted-foreground">{tCalendar('noRidesForDay')}</p>)}
                     </div>
                     <hr/>
                     <div>
-                      <h3 className="text-lg font-semibold mb-2 flex items-center gap-2"><Info className="h-5 w-5 text-purple-600 dark:text-purple-400"/>Eventos de Caballos</h3>
+                      <h3 className="text-lg font-semibold mb-2 flex items-center gap-2"><Info className="h-5 w-5 text-purple-600 dark:text-purple-400"/>{tCalendar('horseEvents')}</h3>
                       {activitiesForSelectedDate.horseEvents.length > 0 ? (
                         <ul className="space-y-2 text-sm">
                           {activitiesForSelectedDate.horseEvents.map((event, index) => (
                             <li key={`horse_event_calendario_${index}`} className="p-2 rounded-md bg-purple-50 dark:bg-purple-800/30">
                               <p><strong>{event.horseName}</strong>: {event.type}</p>
-                              {event.notes && <p className="text-xs text-muted-foreground">Notas: {event.notes}</p>}
+                              {event.notes && <p className="text-xs text-muted-foreground">{tCalendar('notes')}: {event.notes}</p>}
                             </li>
                           ))}
                         </ul>
-                      ) : (<p className="text-sm text-muted-foreground">No hay ingresos, salidas o citas de herrador para este día.</p>)}
+                      ) : (<p className="text-sm text-muted-foreground">{tCalendar('noHorseEventsForDay')}</p>)}
                     </div>
                   </CardContent>
                 </Card>
               ) : (
                 <Card>
                   <CardContent className="p-6 text-center">
-                    <p className="text-muted-foreground">Selecciona un día en el calendario para ver los detalles.</p>
+                    <p className="text-muted-foreground">{tCalendar('selectDayToView')}</p>
                   </CardContent>
                 </Card>
               )}

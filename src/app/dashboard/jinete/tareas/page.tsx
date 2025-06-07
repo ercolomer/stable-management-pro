@@ -22,12 +22,22 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useTranslations } from 'next-intl';
 
 
 export default function JineteGestionTareasPage() {
   const db = getDb(); 
   const { userProfile, loading: authLoading, activeStableId } = useAuth();
   const { toast } = useToast();
+
+  // Traducciones
+  const t = useTranslations('common');
+  const tTasks = useTranslations('tasks');
+  
+
+
+  // NUEVO: Estado para el filtro de fecha
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
 
   const [jinetesEnCuadra, setJinetesEnCuadra] = useState<UserProfile[]>([]); 
   const [tasks, setTasks] = useState<DailyTask[]>([]);
@@ -41,19 +51,48 @@ export default function JineteGestionTareasPage() {
   const [dueDate, setDueDate] = useState<Date | undefined>(undefined);
   const [editingTask, setEditingTask] = useState<DailyTask | null>(null);
 
+  // NUEVO: Función para filtrar tareas por fecha seleccionada
+  const filteredTasks = useMemo(() => {
+    if (!selectedDate || tasks.length === 0) return tasks;
+    
+    const selectedDateStart = startOfDay(selectedDate);
+    
+    return tasks.filter(task => {
+      if (!task.dueDate) return false; // Solo mostrar tareas con fecha de entrega
+      
+      const taskDate = task.dueDate instanceof Timestamp ? task.dueDate.toDate() : new Date(task.dueDate);
+      const taskDateStart = startOfDay(taskDate);
+      
+      return taskDateStart.getTime() === selectedDateStart.getTime();
+    });
+  }, [tasks, selectedDate]);
+
+  // NUEVO: Estadísticas para el día seleccionado
+  const dayStats = useMemo(() => {
+    const completed = filteredTasks.filter(task => task.isCompleted).length;
+    const pending = filteredTasks.filter(task => !task.isCompleted).length;
+    const overdue = filteredTasks.filter(task => {
+      if (task.isCompleted) return false;
+      const taskDate = task.dueDate instanceof Timestamp ? task.dueDate.toDate() : new Date(task.dueDate!);
+      return taskDate < startOfDay(new Date());
+    }).length;
+    
+    return { total: filteredTasks.length, completed, pending, overdue };
+  }, [filteredTasks]);
+
   useEffect(() => {
     if (authLoading) return;
 
     const stableIdToUse = activeStableId;
 
     if (!stableIdToUse) {
-      setError("No estás asignado a ninguna cuadra. Únete a una para gestionar tareas.");
+      setError(tTasks('notAssignedToStable'));
       setIsLoading(false);
       return;
     }
     
     if (userProfile && userProfile.role !== "jinete") {
-       setError("Acceso denegado. Debes ser jinete.");
+       setError(tTasks('accessDenied'));
        setIsLoading(false);
        return;
     }
@@ -100,9 +139,9 @@ export default function JineteGestionTareasPage() {
         
       } catch (err: any) {
         console.error("Error al cargar datos:", err);
-        setError(`No se pudo cargar la información necesaria. ${err.message || ''} Código: ${err.code || 'N/A'}`);
+        setError(`${tTasks('errorLoadingData')} ${err.message || ''} Código: ${err.code || 'N/A'}`);
         if (toast) {
-          toast({ title: "Error de Carga", description: `No se pudo cargar la información de tareas. Código: ${err.code || 'N/A'}. Mensaje: ${err.message || ''}`, variant: "destructive", duration: 7000});
+          toast({ title: t('error'), description: `${tTasks('errorLoadingData')} Código: ${err.code || 'N/A'}. Mensaje: ${err.message || ''}`, variant: "destructive", duration: 7000});
         }
       } finally {
         setIsLoading(false);
@@ -135,11 +174,11 @@ export default function JineteGestionTareasPage() {
     const stableIdToUse = activeStableId;
     
     if (!description.trim()) {
-      if(toast) toast({ title: "Error", description: "La descripción de la tarea es requerida.", variant: "destructive" });
+      if(toast) toast({ title: t('error'), description: tTasks('taskDescription'), variant: "destructive" });
       return;
     }
      if (!stableIdToUse) {
-        if(toast) toast({ title: "Error", description: "No se pudo determinar la cuadra para guardar la tarea.", variant: "destructive" });
+        if(toast) toast({ title: t('error'), description: tTasks('noActiveStable'), variant: "destructive" });
         return;
     }
     setIsSubmitting(true);
@@ -174,7 +213,7 @@ export default function JineteGestionTareasPage() {
           const timeB = dateB ? new Date(dateB).getTime() : 0;
           return timeB - timeA;
         }));
-        if(toast) toast({ title: "Tarea Actualizada", description: "La tarea ha sido modificada." });
+        if(toast) toast({ title: tTasks('taskUpdated'), description: "La tarea ha sido modificada." });
       } else {
         const docRef = await addDoc(collection(db, "tasks"), { ...taskDataForFirestore, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
         const finalTaskState = { ...taskDataForStateUpdate, id: docRef.id, createdAt: new Date(), updatedAt: new Date() } as DailyTask;
@@ -185,12 +224,12 @@ export default function JineteGestionTareasPage() {
           const timeB = dateB ? new Date(dateB).getTime() : 0;
           return timeB - timeA;
         }));
-        if(toast) toast({ title: "Tarea Creada", description: "La nueva tarea ha sido asignada." });
+        if(toast) toast({ title: tTasks('taskCreated'), description: "La nueva tarea ha sido asignada." });
       }
       resetForm();
     } catch (err: any) {
       console.error("Error al guardar tarea:", err);
-      if(toast) toast({ title: "Error", description: `No se pudo guardar la tarea. ${err.message || ''} Código: ${err.code || 'N/A'}`, variant: "destructive" });
+      if(toast) toast({ title: t('error'), description: `${editingTask ? tTasks('errorUpdating') : tTasks('errorCreating')} ${err.message || ''} Código: ${err.code || 'N/A'}`, variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -209,10 +248,10 @@ export default function JineteGestionTareasPage() {
     try {
       await deleteDoc(doc(db, "tasks", taskId));
       setTasks(tasks.filter(t => t.id !== taskId));
-      if(toast) toast({ title: "Tarea Eliminada", description: "La tarea ha sido eliminada." });
+      if(toast) toast({ title: tTasks('taskDeleted'), description: "La tarea ha sido eliminada." });
     } catch (err: any) {
       console.error("Error al eliminar tarea:", err);
-      if(toast) toast({ title: "Error", description: `No se pudo eliminar la tarea. ${err.message || ''} Código: ${err.code || 'N/A'}`, variant: "destructive" });
+      if(toast) toast({ title: t('error'), description: `${tTasks('errorDeleting')} ${err.message || ''} Código: ${err.code || 'N/A'}`, variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -242,10 +281,10 @@ export default function JineteGestionTareasPage() {
           updatedAt: serverTimestamp() 
       });
       setTasks(tasks.map(t => t.id === task.id ? taskForStateUpdate : t));
-      if(toast) toast({ title: "Estado de Tarea Actualizado" });
+      if(toast) toast({ title: newCompletedStatus ? tTasks('taskMarkedCompleted') : tTasks('taskMarkedPending') });
     } catch (error: any) {
       console.error("Error al actualizar estado de tarea:", error);
-      if(toast) toast({ title: "Error", description: `No se pudo actualizar el estado. ${error.message || ''} Código: ${error.code || 'N/A'}`, variant: "destructive" });
+      if(toast) toast({ title: t('error'), description: `${tTasks('errorToggling')} ${error.message || ''} Código: ${error.code || 'N/A'}`, variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -256,8 +295,8 @@ export default function JineteGestionTareasPage() {
       const jinete = jinetesEnCuadra.find(j => j.uid === task.assignedTo);
       return jinete?.displayName || task.assignedTo.substring(0,6)+"...";
     }
-    if (task.assignmentScope === 'ALL_MEMBERS_INDIVIDUALLY') return "Todos (Individual)";
-    if (task.assignmentScope === 'ANYONE_IN_STABLE') return "Cualquiera en la cuadra";
+    if (task.assignmentScope === 'ALL_MEMBERS_INDIVIDUALLY') return tTasks('allMembersIndividually');
+    if (task.assignmentScope === 'ANYONE_IN_STABLE') return tTasks('anyoneInStable');
     return "No asignada"; 
   };
   
@@ -272,58 +311,150 @@ export default function JineteGestionTareasPage() {
     return (
         <Alert variant="default" className="max-w-lg mx-auto">
             <AlertCircle className="h-4 w-4" />
-            <AlertTitle>No tienes una cuadra activa</AlertTitle>
+            <AlertTitle>{tTasks('noActiveStable')}</AlertTitle>
             <AlertDescription>
-            Por favor, <Link href="/profile" className="text-primary underline">únete a una cuadra</Link> para gestionar tareas.
+            {tTasks('pleaseJoin')} <Link href="/profile" className="text-primary underline">{tTasks('joinStableLink')}</Link> {tTasks('toManageTasks')}
             </AlertDescription>
         </Alert>
     );
   }
   
   if (error && !isLoading) { 
-    return <Alert variant="destructive" className="max-w-lg mx-auto"><AlertCircle className="h-4 w-4" /><AlertTitle>Error</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>;
+    return <Alert variant="destructive" className="max-w-lg mx-auto"><AlertCircle className="h-4 w-4" /><AlertTitle>{t('error')}</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>;
   }
 
   return (
     <div className="container mx-auto py-8 space-y-8">
+      {/* NUEVO: Selector de fecha para filtrar tareas */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CalendarIcon className="h-6 w-6" />
+            {tTasks('filterByDay')}
+          </CardTitle>
+          <CardDescription>
+            {tTasks('selectDayToFilter')}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
+            <div className="flex-1">
+              <Label htmlFor="dateFilter">{tTasks('selectedDate')}</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    id="dateFilter"
+                    variant="outline"
+                    className="w-full md:w-auto justify-start text-left font-normal"
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {format(selectedDate, "EEEE, dd 'de' MMMM, yyyy", { locale: es })}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={(date) => date && setSelectedDate(startOfDay(date))}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            
+            {/* Estadísticas del día */}
+            <div className="flex gap-2 flex-wrap">
+              <div className="bg-blue-50 dark:bg-blue-900/30 px-3 py-1 rounded-lg text-sm">
+                <span className="font-medium text-blue-700 dark:text-blue-300">{tTasks('totalColon')} {dayStats.total}</span>
+              </div>
+              <div className="bg-green-50 dark:bg-green-900/30 px-3 py-1 rounded-lg text-sm">
+                <span className="font-medium text-green-700 dark:text-green-300">{tTasks('completedColon')} {dayStats.completed}</span>
+              </div>
+              <div className="bg-yellow-50 dark:bg-yellow-900/30 px-3 py-1 rounded-lg text-sm">
+                <span className="font-medium text-yellow-700 dark:text-yellow-300">{tTasks('pendingColon')} {dayStats.pending}</span>
+              </div>
+              {dayStats.overdue > 0 && (
+                <div className="bg-red-50 dark:bg-red-900/30 px-3 py-1 rounded-lg text-sm">
+                  <span className="font-medium text-red-700 dark:text-red-300">{tTasks('overdueColon')} {dayStats.overdue}</span>
+                </div>
+              )}
+            </div>
+          </div>
+          
+          {/* Botones de navegación rápida */}
+          <div className="flex gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSelectedDate(startOfDay(new Date()))}
+              className={selectedDate.toDateString() === new Date().toDateString() ? "bg-primary text-primary-foreground" : ""}
+            >
+              {tTasks('today')}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const tomorrow = new Date();
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                setSelectedDate(startOfDay(tomorrow));
+              }}
+            >
+              {tTasks('tomorrow')}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const nextWeek = new Date();
+                nextWeek.setDate(nextWeek.getDate() + 7);
+                setSelectedDate(startOfDay(nextWeek));
+              }}
+            >
+              {tTasks('nextWeek')}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <PlusCircle className="h-6 w-6" />
-            {editingTask ? "Editar Tarea de Cuadra" : "Crear Nueva Tarea de Cuadra"}
+            {editingTask ? tTasks('editTask') : tTasks('createNewTask')}
           </CardTitle>
           <CardDescription>
-            {editingTask ? "Modifica los detalles de la tarea." : "Asigna nuevas tareas a los miembros de la cuadra."}
+            {editingTask ? tTasks('modifyTaskDetails') : tTasks('assignNewTasks')}
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmitTask}>
           <CardContent className="space-y-4">
             <div>
-              <Label htmlFor="descriptionJineteTareas">Descripción de la Tarea</Label>
-              <Textarea id="descriptionJineteTareas" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ej: Limpiar equipo de salto" required disabled={isSubmitting} />
+              <Label htmlFor="descriptionJineteTareas">{tTasks('taskDescription')}</Label>
+              <Textarea id="descriptionJineteTareas" value={description} onChange={(e) => setDescription(e.target.value)} placeholder={tTasks('taskPlaceholder')} required disabled={isSubmitting} />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="assignmentTypeJineteTareas">Asignar a</Label>
+                <Label htmlFor="assignmentTypeJineteTareas">{tTasks('assignTo')}</Label>
                  <Select 
                   value={currentSelectValue} 
                   onValueChange={handleAssignmentChange} 
                   disabled={isSubmitting}
                 >
                   <SelectTrigger id="assignmentTypeJineteTareas">
-                    <SelectValue placeholder="Selecciona un tipo de asignación" />
+                    <SelectValue placeholder={tTasks('selectAssignmentType')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="ANYONE_IN_STABLE">Cualquiera en la cuadra</SelectItem>
-                    <SelectItem value="ALL_MEMBERS_INDIVIDUALLY">Todos los miembros (individualmente)</SelectItem>
+                    <SelectItem value="ANYONE_IN_STABLE">{tTasks('anyoneInStable')}</SelectItem>
+                    <SelectItem value="ALL_MEMBERS_INDIVIDUALLY">{tTasks('allMembersIndividually')}</SelectItem>
                     {jinetesEnCuadra.length > 0 ? jinetesEnCuadra.map(jinete => (
                       <SelectItem key={jinete.uid} value={jinete.uid}>{jinete.displayName}</SelectItem>
-                    )) : <SelectItem value="no-jinetes" disabled>No hay miembros para asignación específica</SelectItem>}
+                    )) : <SelectItem value="no-jinetes" disabled>{tTasks('noMembersForAssignment')}</SelectItem>}
                   </SelectContent>
                 </Select>
               </div>
               <div>
-                <Label htmlFor="dueDateJineteTareas">Fecha de Entrega (Opcional)</Label>
+                <Label htmlFor="dueDateJineteTareas">{tTasks('dueDate')} ({tTasks('optional')})</Label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
@@ -333,7 +464,7 @@ export default function JineteGestionTareasPage() {
                       disabled={isSubmitting}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {dueDate ? format(dueDate, "PPP", { locale: es }) : <span>Selecciona una fecha</span>}
+                      {dueDate ? format(dueDate, "PPP", { locale: es }) : <span>{tTasks('selectDate')}</span>}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0">
@@ -344,10 +475,10 @@ export default function JineteGestionTareasPage() {
             </div>
           </CardContent>
           <CardFooter className="flex justify-end gap-2">
-            {editingTask && <Button type="button" variant="outline" onClick={resetForm} disabled={isSubmitting}>Cancelar Edición</Button>}
+            {editingTask && <Button type="button" variant="outline" onClick={resetForm} disabled={isSubmitting}>{tTasks('cancelEdit')}</Button>}
             <Button type="submit" disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {editingTask ? "Guardar Cambios" : "Crear Tarea"}
+              {editingTask ? tTasks('saveChanges') : tTasks('addTask')}
             </Button>
           </CardFooter>
         </form>
@@ -357,29 +488,39 @@ export default function JineteGestionTareasPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <ListChecks className="h-6 w-6" />
-            Tareas de la Cuadra
+            {tTasks('tasksFor')} {format(selectedDate, "EEEE, dd 'de' MMMM", { locale: es })}
           </CardTitle>
-          <CardDescription>Lista de todas las tareas actuales en la cuadra.</CardDescription>
+          <CardDescription>
+            {filteredTasks.length === 0 
+              ? tTasks('noTasksForSelectedDate') + " " + format(selectedDate, "dd/MM/yyyy", { locale: es })
+              : `${tTasks('showingTasks')} ${filteredTasks.length} ${filteredTasks.length === 1 ? tTasks('taskSingular') : tTasks('taskPlural')} ${tTasks('forSelectedDay')}`
+            }
+          </CardDescription>
         </CardHeader>
         <CardContent>
         { isLoading ? (<div className="flex justify-center items-center p-8"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>) :
-          tasks.length === 0 ? (
-            <p className="text-muted-foreground">No hay tareas asignadas por el momento.</p>
+          filteredTasks.length === 0 ? (
+            <div className="text-center py-8 space-y-2">
+              <p className="text-muted-foreground">{tTasks('noTasksForThisDate')}</p>
+              <p className="text-sm text-muted-foreground">
+                {tTasks('createNewTaskAbove')}
+              </p>
+            </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[50px]">Estado</TableHead>
-                  <TableHead>Descripción</TableHead>
-                  <TableHead>Sugerida a</TableHead>
-                  <TableHead>Completada por</TableHead>
-                  <TableHead>Fecha Límite</TableHead>
-                  <TableHead>Creada</TableHead>
-                  <TableHead className="text-right">Acciones</TableHead>
+                  <TableHead className="w-[50px]">{tTasks('status')}</TableHead>
+                  <TableHead>{tTasks('taskDescription')}</TableHead>
+                  <TableHead>{tTasks('assignedTo')}</TableHead>
+                  <TableHead>{tTasks('completedBy')}</TableHead>
+                  <TableHead>{tTasks('dueDate')}</TableHead>
+                  <TableHead>{tTasks('created')}</TableHead>
+                  <TableHead className="text-right">{tTasks('actions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {tasks.sort((a,b) => new Date(b.createdAt instanceof Timestamp ? b.createdAt.toDate() : b.createdAt).getTime() - new Date(a.createdAt instanceof Timestamp ? a.createdAt.toDate() : a.createdAt).getTime()).map((task) => {
+                {filteredTasks.sort((a,b) => new Date(b.createdAt instanceof Timestamp ? b.createdAt.toDate() : b.createdAt).getTime() - new Date(a.createdAt instanceof Timestamp ? a.createdAt.toDate() : a.createdAt).getTime()).map((task) => {
                   const taskDueDate = task.dueDate ? (task.dueDate instanceof Timestamp ? task.dueDate.toDate() : new Date(task.dueDate)) : null;
                   const isOverdue = !task.isCompleted && taskDueDate && taskDueDate < startOfDay(new Date());
                   return (
@@ -391,7 +532,7 @@ export default function JineteGestionTareasPage() {
                     )}
                   >
                     <TableCell>
-                      <Button variant="ghost" size="icon" onClick={() => toggleTaskCompletion(task)} disabled={isSubmitting} title={task.isCompleted ? "Marcar como pendiente" : "Marcar como completada"}>
+                      <Button variant="ghost" size="icon" onClick={() => toggleTaskCompletion(task)} disabled={isSubmitting} title={task.isCompleted ? tTasks('markPending') : tTasks('markCompleted')}>
                         {task.isCompleted ? <CheckCircle2 className="h-5 w-5 text-green-600" /> : <Circle className="h-5 w-5 text-muted-foreground" />}
                       </Button>
                     </TableCell>
@@ -403,7 +544,7 @@ export default function JineteGestionTareasPage() {
                               <AlertTriangle className="mr-2 inline h-4 w-4 text-destructive" />
                             </TooltipTrigger>
                             <TooltipContent>
-                              <p>Esta tarea está vencida.</p>
+                              <p>{tTasks('taskOverdue')}</p>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
@@ -414,7 +555,7 @@ export default function JineteGestionTareasPage() {
                      <TableCell>
                         {task.isCompleted && task.completedBy ? 
                             `${jinetesEnCuadra.find(j => j.uid === task.completedBy)?.displayName || task.completedBy.substring(0,6)+"..."} (${task.completedAt ? format(task.completedAt instanceof Timestamp ? task.completedAt.toDate() : new Date(task.completedAt), "dd/MM/yy HH:mm", { locale: es }) : 'N/A'})` 
-                            : 'Pendiente'}
+                            : tTasks('pending')}
                     </TableCell>
                     <TableCell>{task.dueDate ? format(task.dueDate instanceof Timestamp ? task.dueDate.toDate() : new Date(task.dueDate), "dd/MM/yy", { locale: es }) : "N/A"}</TableCell>
                     <TableCell>{format(task.createdAt instanceof Timestamp ? task.createdAt.toDate() : new Date(task.createdAt) , "dd/MM/yy HH:mm", { locale: es })}</TableCell>
@@ -430,16 +571,16 @@ export default function JineteGestionTareasPage() {
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
-                            <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+                            <AlertDialogTitle>{tTasks('confirmDelete')}</AlertDialogTitle>
                             <AlertDialogDescription>
-                              Se eliminará permanentemente la tarea: "{task.description}".
+                              {tTasks('deleteConfirmMessage')} "{task.description}".
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
-                            <AlertDialogCancel disabled={isSubmitting}>Cancelar</AlertDialogCancel>
+                            <AlertDialogCancel disabled={isSubmitting}>{t('cancel')}</AlertDialogCancel>
                             <AlertDialogAction onClick={() => handleDeleteTask(task.id)} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">
                                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                              Eliminar
+                              {t('delete')}
                             </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>

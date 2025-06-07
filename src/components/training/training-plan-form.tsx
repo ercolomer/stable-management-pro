@@ -10,8 +10,10 @@ import { Loader2, Wand2, Lightbulb, AlertTriangle } from "lucide-react";
 // import { suggestTrainingPlanAction, type SuggestTrainingPlanActionState } from "@/app/training-plans/actions"; // Commented out for static export
 import { type SuggestTrainingPlanActionState } from "@/app/training-plans/actions";
 import { useToast } from "@/hooks/use-toast";
+import { useTranslations } from 'next-intl';
 
 export default function TrainingPlanForm() {
+  const t = useTranslations('training');
   const initialState: SuggestTrainingPlanActionState = { message: "", errors: {}, trainingPlan: "" };
   const [state, setState] = useState<SuggestTrainingPlanActionState>(initialState);
   const [isPending, startTransition] = useTransition();
@@ -43,8 +45,8 @@ export default function TrainingPlanForm() {
     
     // Temporary message for static export
     toast({
-      title: "Funcionalidad Temporalmente Deshabilitada",
-      description: "Esta función estará disponible cuando la aplicación se ejecute con servidor completo.",
+      title: t('temporarilyDisabled'),
+      description: t('temporarilyDisabledDescription'),
       variant: "destructive",
     });
   };
@@ -53,10 +55,9 @@ export default function TrainingPlanForm() {
     <div className="space-y-6">
       <Alert className="border-orange-200 bg-orange-50">
         <AlertTriangle className="h-4 w-4 text-orange-600" />
-        <AlertTitle className="text-orange-800">Funcionalidad Temporalmente Deshabilitada</AlertTitle>
+        <AlertTitle className="text-orange-800">{t('temporarilyDisabled')}</AlertTitle>
         <AlertDescription className="text-orange-700">
-          La generación de planes de entrenamiento con IA está temporalmente deshabilitada en esta versión estática. 
-          Esta función estará disponible cuando la aplicación se ejecute con todas las funcionalidades del servidor.
+          {t('temporarilyDisabledDescription')}
         </AlertDescription>
       </Alert>
       

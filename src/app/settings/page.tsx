@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useAuth } from "@/contexts/auth-context";
@@ -16,20 +15,12 @@ import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage
 import { Loader2, ShieldAlert, Trash2, UserCircle2, Save } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
+import { useTranslations } from 'next-intl';
 
 
 export default function SettingsPage() {
+  const t = useTranslations('settings');
+  const tCommon = useTranslations('common');
   const { user, userProfile, loading: authLoading, refreshUserProfile } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
@@ -70,15 +61,15 @@ export default function SettingsPage() {
     setPasswordSuccess(null);
 
     if (newPassword !== confirmNewPassword) {
-      setPasswordError("Las nuevas contraseñas no coinciden.");
+      setPasswordError(t('passwordNotMatch'));
       return;
     }
     if (newPassword.length < 6) {
-      setPasswordError("La nueva contraseña debe tener al menos 6 caracteres.");
+      setPasswordError(t('passwordMinLength'));
       return;
     }
     if (!user || !user.email) {
-        setPasswordError("No se pudo obtener la información del usuario para el cambio de contraseña.");
+        setPasswordError(t('userInfoError'));
         return;
     }
 
@@ -88,24 +79,24 @@ export default function SettingsPage() {
       const credential = EmailAuthProvider.credential(user.email, currentPassword);
       await reauthenticateWithCredential(user, credential); // User object comes from useAuth()
       await updatePassword(user, newPassword); // User object comes from useAuth()
-      setPasswordSuccess("Contraseña actualizada con éxito.");
-      toast({ title: "Éxito", description: "Tu contraseña ha sido actualizada." });
+      setPasswordSuccess(t('passwordUpdated'));
+      toast({ title: t('success'), description: t('passwordUpdated') });
       setCurrentPassword("");
       setNewPassword("");
       setConfirmNewPassword("");
     } catch (error) {
       console.error("Error al cambiar contraseña:", error);
-      let msg = "Error al cambiar la contraseña. Verifica tu contraseña actual.";
+      let msg = t('passwordChangeError');
        if (error instanceof Error && 'code' in error) {
         const firebaseError = error as { code: string; message: string };
         if (firebaseError.code === 'auth/wrong-password' || firebaseError.code === 'auth/invalid-credential') {
-          msg = "La contraseña actual es incorrecta.";
+          msg = t('wrongPassword');
         } else if (firebaseError.code === 'auth/too-many-requests') {
-          msg = "Demasiados intentos fallidos. Inténtalo más tarde.";
+          msg = t('tooManyRequests');
         }
       }
       setPasswordError(msg);
-      toast({ title: "Error", description: msg, variant: "destructive" });
+      toast({ title: t('error'), description: msg, variant: "destructive" });
     } finally {
       setIsPasswordLoading(false);
     }
@@ -113,7 +104,7 @@ export default function SettingsPage() {
   
   const handleDeleteAccount = async () => {
     if (!user || !user.email) {
-      setDeleteError("No se pudo obtener la información del usuario para eliminar la cuenta.");
+      setDeleteError(t('deleteUserInfoError'));
       return;
     }
     setIsDeleteLoading(true);
@@ -123,22 +114,22 @@ export default function SettingsPage() {
       const credential = EmailAuthProvider.credential(user.email, reauthPassword);
       await reauthenticateWithCredential(user, credential);
       await deleteUser(user);
-      toast({ title: "Cuenta Eliminada", description: "Tu cuenta ha sido eliminada permanentemente." });
+      toast({ title: t('accountDeleted'), description: t('accountDeletedPermanently') });
       setIsReauthDialogOpen(false);
       router.push("/login"); 
     } catch (error) {
        console.error("Error al eliminar cuenta:", error);
-       let msg = "Error al eliminar la cuenta.";
+       let msg = t('deleteError');
        if (error instanceof Error && 'code' in error) {
         const firebaseError = error as { code: string; message: string };
         if (firebaseError.code === 'auth/wrong-password' || firebaseError.code === 'auth/invalid-credential') {
-          msg = "La contraseña es incorrecta. No se pudo verificar para eliminar la cuenta.";
+          msg = t('wrongPasswordDelete');
         } else if (firebaseError.code === 'auth/too-many-requests') {
-          msg = "Demasiados intentos fallidos. Inténtalo más tarde.";
+          msg = t('tooManyRequests');
         }
       }
       setDeleteError(msg);
-      toast({ title: "Error al Eliminar", description: msg, variant: "destructive" });
+      toast({ title: t('deleteError'), description: msg, variant: "destructive" });
     } finally {
       setIsDeleteLoading(false);
     }
@@ -159,8 +150,8 @@ export default function SettingsPage() {
   const handleProfileUpdateSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!user) {
-      setProfileUpdateError("Usuario no autenticado.");
-      toast({ title: "Error", description: "Usuario no autenticado.", variant: "destructive" });
+      setProfileUpdateError(t('userNotAuthenticated'));
+      toast({ title: t('error'), description: t('userNotAuthenticated'), variant: "destructive" });
       return;
     }
     setIsProfileUpdating(true);
@@ -213,7 +204,7 @@ export default function SettingsPage() {
       }
 
       if (profileActuallyUpdated) {
-        toast({ title: "Perfil Actualizado", description: "Tus cambios han sido guardados." });
+        toast({ title: t('profileUpdated'), description: t('changesWereSaved') });
         console.log("AuthSettings: Calling refreshUserProfile...");
         refreshUserProfile().catch(err => {
             console.error("AuthSettings: Error during background refreshUserProfile:", err);
@@ -221,7 +212,7 @@ export default function SettingsPage() {
         });
         console.log("AuthSettings: refreshUserProfile call initiated.");
       } else {
-        toast({ title: "Sin Cambios", description: "No se detectaron cambios para guardar." });
+        toast({ title: t('noChanges'), description: t('noChangesDetected') });
         console.log("AuthSettings: No changes detected to save.");
       }
       
@@ -232,27 +223,27 @@ export default function SettingsPage() {
 
     } catch (error: any) {
       console.error("AuthSettings: Error updating profile:", error, "Code:", error.code, "Message:", error.message);
-      let userFriendlyMessage = `Error al actualizar el perfil: ${error.message || 'Error desconocido'}`;
+      let userFriendlyMessage = `${t('updateError')}: ${error.message || t('error')}`;
       if (error.code) {
         switch (error.code) {
           case 'storage/unauthorized':
-            userFriendlyMessage = "Error de permisos: No tienes permiso para subir esta imagen. Revisa las reglas de Firebase Storage.";
+            userFriendlyMessage = t('permissionError');
             break;
           case 'storage/canceled':
-            userFriendlyMessage = "La subida de la imagen fue cancelada.";
+            userFriendlyMessage = t('uploadCanceled');
             break;
           case 'storage/unknown':
-            userFriendlyMessage = "Ocurrió un error desconocido al subir la imagen. Intenta de nuevo.";
+            userFriendlyMessage = t('unknownUploadError');
             break;
           case 'auth/requires-recent-login':
-            userFriendlyMessage = "Esta operación requiere un inicio de sesión reciente. Por favor, cierra sesión y vuelve a iniciar sesión.";
+            userFriendlyMessage = t('recentLoginRequired');
             break;
           default:
-            userFriendlyMessage = `Error (${error.code}): ${error.message || 'Error desconocido al actualizar perfil.'}`;
+            userFriendlyMessage = `${t('error')} (${error.code}): ${error.message || t('unknownUploadError')}`;
         }
       }
       setProfileUpdateError(userFriendlyMessage);
-      toast({ title: "Error de Actualización", description: userFriendlyMessage, variant: "destructive", duration: 7000 });
+      toast({ title: t('updateError'), description: userFriendlyMessage, variant: "destructive", duration: 7000 });
     } finally {
       console.log("AuthSettings: Profile update process finished. Setting isProfileUpdating to false.");
       setIsProfileUpdating(false);
@@ -271,23 +262,23 @@ export default function SettingsPage() {
 
   return (
     <div className="container mx-auto max-w-2xl py-8 space-y-8">
-      <h1 className="text-3xl font-bold">Ajustes de Cuenta</h1>
+      <h1 className="text-3xl font-bold">{t('title')}</h1>
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><UserCircle2 className="h-6 w-6"/>Editar Perfil</CardTitle>
-          <CardDescription>Actualiza tu nombre visible y foto de perfil.</CardDescription>
+          <CardTitle className="flex items-center gap-2"><UserCircle2 className="h-6 w-6"/>{t('editProfile')}</CardTitle>
+          <CardDescription>{t('updateProfileDescription')}</CardDescription>
         </CardHeader>
         <form onSubmit={handleProfileUpdateSubmit}>
           <CardContent className="space-y-6">
-            {profileUpdateError && <Alert variant="destructive"><AlertTitle>Error de Perfil</AlertTitle><AlertDescription>{profileUpdateError}</AlertDescription></Alert>}
+            {profileUpdateError && <Alert variant="destructive"><AlertTitle>{t('profileUpdateError')}</AlertTitle><AlertDescription>{profileUpdateError}</AlertDescription></Alert>}
             <div className="flex flex-col items-center gap-4 sm:flex-row">
               <Avatar className="h-24 w-24 cursor-pointer ring-2 ring-primary/30 hover:ring-primary" onClick={() => fileInputRef.current?.click()}>
-                <AvatarImage src={profileImagePreview || `https://placehold.co/96x96.png?text=${newDisplayName ? newDisplayName[0].toUpperCase() : (userProfile.displayName?.[0].toUpperCase() || 'U')}`} alt="Avatar de Usuario" data-ai-hint={userProfile.dataAiHint || "person portrait"} />
+                <AvatarImage src={profileImagePreview || `https://placehold.co/96x96.png?text=${newDisplayName ? newDisplayName[0].toUpperCase() : (userProfile.displayName?.[0].toUpperCase() || 'U')}`} alt={t('userAvatar')} data-ai-hint={userProfile.dataAiHint || "person portrait"} />
                 <AvatarFallback className="text-3xl">{newDisplayName ? newDisplayName.substring(0,2).toUpperCase() : userProfile.displayName ? userProfile.displayName.substring(0,2).toUpperCase() : (userProfile.email?.[0].toUpperCase() || 'U')}</AvatarFallback>
               </Avatar>
               <div className="w-full">
-                <Label htmlFor="profileImage" className="mb-1 block">Foto de Perfil (PNG, JPG)</Label>
+                <Label htmlFor="profileImage" className="mb-1 block">{t('profilePicture')}</Label>
                 <Input 
                   id="profileImage" 
                   type="file" 
@@ -297,17 +288,17 @@ export default function SettingsPage() {
                   ref={fileInputRef}
                   disabled={isProfileUpdating}
                 />
-                <p className="text-xs text-muted-foreground mt-1">Haz clic en el avatar para cambiar la imagen también.</p>
+                <p className="text-xs text-muted-foreground mt-1">{t('clickAvatarToChange')}</p>
               </div>
             </div>
             <div>
-              <Label htmlFor="displayName">Nombre Visible</Label>
+              <Label htmlFor="displayName">{t('displayName')}</Label>
               <Input 
                 id="displayName" 
                 type="text" 
                 value={newDisplayName} 
                 onChange={(e) => setNewDisplayName(e.target.value)} 
-                placeholder="Tu nombre completo o apodo"
+                placeholder={t('displayNamePlaceholder')}
                 disabled={isProfileUpdating} 
               />
             </div>
@@ -315,7 +306,7 @@ export default function SettingsPage() {
           <CardFooter>
             <Button type="submit" disabled={isProfileUpdating || (!profileImageFile && newDisplayName === (userProfile?.displayName || ""))}>
               {isProfileUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              <Save className="mr-2 h-4 w-4"/> Guardar Cambios de Perfil
+              <Save className="mr-2 h-4 w-4"/> {t('saveProfileChanges')}
             </Button>
           </CardFooter>
         </form>
@@ -323,30 +314,30 @@ export default function SettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Cambiar Contraseña</CardTitle>
-          <CardDescription>Actualiza tu contraseña para mantener tu cuenta segura.</CardDescription>
+          <CardTitle>{t('changePassword')}</CardTitle>
+          <CardDescription>{t('passwordDescription')}</CardDescription>
         </CardHeader>
         <form onSubmit={handlePasswordChangeSubmit}>
           <CardContent className="space-y-4">
-            {passwordError && <Alert variant="destructive"><AlertTitle>Error</AlertTitle><AlertDescription>{passwordError}</AlertDescription></Alert>}
-            {passwordSuccess && <Alert variant="default" className="bg-green-100 border-green-300 text-green-700 dark:bg-green-900/30 dark:border-green-700 dark:text-green-300"><AlertTitle>Éxito</AlertTitle><AlertDescription>{passwordSuccess}</AlertDescription></Alert>}
+            {passwordError && <Alert variant="destructive"><AlertTitle>{tCommon('error')}</AlertTitle><AlertDescription>{passwordError}</AlertDescription></Alert>}
+            {passwordSuccess && <Alert variant="default" className="bg-green-100 border-green-300 text-green-700 dark:bg-green-900/30 dark:border-green-700 dark:text-green-300"><AlertTitle>{t('success')}</AlertTitle><AlertDescription>{passwordSuccess}</AlertDescription></Alert>}
             <div>
-              <Label htmlFor="currentPassword">Contraseña Actual</Label>
+              <Label htmlFor="currentPassword">{t('currentPassword')}</Label>
               <Input id="currentPassword" type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required disabled={isPasswordLoading} />
             </div>
             <div>
-              <Label htmlFor="newPassword">Nueva Contraseña</Label>
+              <Label htmlFor="newPassword">{t('newPassword')}</Label>
               <Input id="newPassword" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required disabled={isPasswordLoading} />
             </div>
             <div>
-              <Label htmlFor="confirmNewPassword">Confirmar Nueva Contraseña</Label>
+              <Label htmlFor="confirmNewPassword">{t('confirmNewPassword')}</Label>
               <Input id="confirmNewPassword" type="password" value={confirmNewPassword} onChange={(e) => setConfirmNewPassword(e.target.value)} required disabled={isPasswordLoading} />
             </div>
           </CardContent>
           <CardFooter>
             <Button type="submit" disabled={isPasswordLoading}>
               {isPasswordLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Cambiar Contraseña
+              {t('changePassword')}
             </Button>
           </CardFooter>
         </form>
@@ -354,46 +345,60 @@ export default function SettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-destructive flex items-center gap-2"><ShieldAlert className="h-5 w-5" /> Zona Peligrosa</CardTitle>
+          <CardTitle className="text-destructive flex items-center gap-2"><ShieldAlert className="h-5 w-5" /> {t('dangerZone')}</CardTitle>
         </CardHeader>
         <CardContent>
           <CardDescription className="mb-4">
-            Eliminar tu cuenta es una acción permanente e irreversible. Todos tus datos serán eliminados.
+            {t('deleteAccountDescription')}
           </CardDescription>
-           <AlertDialog open={isReauthDialogOpen} onOpenChange={setIsReauthDialogOpen}>
-            <AlertDialogTrigger asChild>
-                <Button variant="destructive" className="bg-red-600 hover:bg-red-700">
-                    <Trash2 className="mr-2 h-4 w-4" /> Eliminar Mi Cuenta
-                </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-                <AlertDialogHeader>
-                <AlertDialogTitle>¿Estás seguro de que quieres eliminar tu cuenta?</AlertDialogTitle>
-                <AlertDialogDescription>
-                    Esta acción no se puede deshacer. Para confirmar, por favor, introduce tu contraseña actual.
-                </AlertDialogDescription>
-                </AlertDialogHeader>
-                <div className="space-y-2 py-2">
-                    <Label htmlFor="reauthPassword">Contraseña Actual</Label>
-                    <Input 
-                        id="reauthPassword" 
-                        type="password" 
-                        value={reauthPassword} 
-                        onChange={(e) => setReauthPassword(e.target.value)} 
-                        placeholder="Tu contraseña actual"
-                        disabled={isDeleteLoading}
-                    />
-                    {deleteError && <p className="text-sm text-destructive">{deleteError}</p>}
+          <Button 
+            onClick={() => setIsReauthDialogOpen(true)} 
+            variant="destructive" 
+            className="bg-red-600 hover:bg-red-700"
+          >
+            <Trash2 className="mr-2 h-4 w-4" /> {t('deleteAccount')}
+          </Button>
+          
+          {isReauthDialogOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center">
+              <div className="fixed inset-0 bg-black/50" onClick={() => setIsReauthDialogOpen(false)} />
+              <div className="relative z-50 w-full max-w-md p-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
+                <h2 className="text-lg font-semibold text-destructive mb-2">{t('confirmDeleteTitle')}</h2>
+                <p className="text-sm text-muted-foreground mb-4">{t('confirmDeleteDescription')}</p>
+                
+                <div className="space-y-2 mb-4">
+                  <Label htmlFor="reauthPassword">{t('currentPasswordForDelete')}</Label>
+                  <Input 
+                    id="reauthPassword" 
+                    type="password" 
+                    value={reauthPassword} 
+                    onChange={(e) => setReauthPassword(e.target.value)} 
+                    placeholder={t('passwordPlaceholder')}
+                    disabled={isDeleteLoading}
+                  />
+                  {deleteError && <p className="text-sm text-destructive">{deleteError}</p>}
                 </div>
-                <AlertDialogFooter>
-                <AlertDialogCancel disabled={isDeleteLoading} onClick={() => {setDeleteError(null); setReauthPassword("");}}>Cancelar</AlertDialogCancel>
-                <AlertDialogAction onClick={handleDeleteAccount} disabled={isDeleteLoading || !reauthPassword} className="bg-red-600 hover:bg-red-700">
+                
+                <div className="flex justify-end gap-2">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => {setDeleteError(null); setReauthPassword(""); setIsReauthDialogOpen(false);}}
+                    disabled={isDeleteLoading}
+                  >
+                    {t('cancel')}
+                  </Button>
+                  <Button 
+                    onClick={handleDeleteAccount} 
+                    disabled={isDeleteLoading || !reauthPassword} 
+                    className="bg-red-600 hover:bg-red-700 text-white"
+                  >
                     {isDeleteLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Eliminar Cuenta Permanentemente
-                </AlertDialogAction>
-                </AlertDialogFooter>
-            </AlertDialogContent>
-            </AlertDialog>
+                    {t('deleteAccountPermanently')}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
       
