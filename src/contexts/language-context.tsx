@@ -22,7 +22,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
 
   // Log solo en desarrollo
   if (process.env.NODE_ENV === 'development') {
-    console.log(`[LanguageProvider] 🏗️ Inicializandoo - nextIntlLocale: ${nextIntlLocale}, initialLocale: ${locale}`);
+    console.log(`[LanguageProvider] 🏗️ Inicializando - nextIntlLocale: ${nextIntlLocale}, initialLocale: ${locale}`);
     console.log(`[LanguageProvider] 📊 Estado actual: locale=${locale}, isLoading=${isLoading}, nextIntl=${nextIntlLocale}`);
   }
 
@@ -56,52 +56,40 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(true);
     
     try {
-      // Importar dinámicamente para evitar problemas SSR
-      const { setLocaleCookie } = await import('@/lib/cookies');
-      
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`[LanguageProvider] 🍪 Configurando cookies para: ${newLocale}`);
-      }
-      
-      // Configurar cookie de idioma
-      const cookieResult = setLocaleCookie(newLocale);
-      
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`[LanguageProvider] 🍪 Cookie configurada: ${cookieResult}`);
-      }
-      
-      // Actualizar estado inmediatamente
-      setLocaleState(newLocale);
-      
-      // En producción, forzar recarga después de un breve delay
-      // Esto es necesario para Firebase Hosting
+      // Usar el sistema de cookies original del proyecto
       if (typeof window !== 'undefined') {
+        const isSecure = window.location.protocol === 'https:';
+        const cookieValue = `preferred-locale=${newLocale}; path=/; max-age=${60 * 60 * 24 * 365}; SameSite=lax${isSecure ? '; Secure' : ''}`;
+        
+        // Configurar cookie
+        document.cookie = cookieValue;
+        
+        // Backup en localStorage (parte del sistema original)
+        try {
+          localStorage.setItem('preferred-locale', newLocale);
+        } catch (e) {
+          console.warn('No se pudo guardar en localStorage:', e);
+        }
+        
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`[LanguageProvider] 🍪 Cookie configurada: ${cookieValue}`);
+        }
+        
+        // Actualizar estado inmediatamente
+        setLocaleState(newLocale);
+        
+        // Recargar la página para aplicar el cambio (diseño original del sistema)
         setTimeout(() => {
           if (process.env.NODE_ENV === 'development') {
             console.log(`[LanguageProvider] 🔄 Recargando página para aplicar cambio de idioma`);
           }
           window.location.reload();
-        }, 150); // Aumentar el delay para producción
+        }, 100);
       }
       
     } catch (error) {
       console.error(`[LanguageProvider] ❌ Error al cambiar idioma:`, error);
       setIsLoading(false);
-      
-      // Intentar método alternativo si falla
-      if (typeof window !== 'undefined') {
-        try {
-          // Método directo de cookie como fallback
-          document.cookie = `preferred-locale=${newLocale}; path=/; max-age=${60 * 60 * 24 * 365}; SameSite=lax${window.location.protocol === 'https:' ? '; Secure' : ''}`;
-          localStorage.setItem('preferred-locale', newLocale);
-          
-          setTimeout(() => {
-            window.location.reload();
-          }, 200);
-        } catch (fallbackError) {
-          console.error(`[LanguageProvider] ❌ Error en método fallback:`, fallbackError);
-        }
-      }
     }
   }, [locale]);
 
