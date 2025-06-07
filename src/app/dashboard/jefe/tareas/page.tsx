@@ -332,9 +332,9 @@ export default function GestionTareasPage() {
       const jinete = jinetes.find(j => j.uid === task.assignedTo);
       return jinete?.displayName || task.assignedTo.substring(0,6)+"...";
     }
-    if (task.assignmentScope === 'ALL_MEMBERS_INDIVIDUALLY') return "Todos (Individual)";
-    if (task.assignmentScope === 'ANYONE_IN_STABLE') return "Cualquiera en la cuadra";
-    return "No asignada"; 
+    if (task.assignmentScope === 'ALL_MEMBERS_INDIVIDUALLY') return tTasks('allMembersIndividually');
+    if (task.assignmentScope === 'ANYONE_IN_STABLE') return tTasks('anyoneInStable');
+    return tTasks('notAssigned');
   };
   
   const currentSelectValue = assignmentScope === 'SPECIFIC_USER' ? (assignedTo || "") : assignmentScope;
@@ -496,8 +496,8 @@ export default function GestionTareasPage() {
                     <SelectValue placeholder="Selecciona un tipo de asignación" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="ANYONE_IN_STABLE">Cualquiera en la cuadra</SelectItem>
-                    <SelectItem value="ALL_MEMBERS_INDIVIDUALLY">Todos los miembros (individualmente)</SelectItem>
+                    <SelectItem value="ANYONE_IN_STABLE">{tTasks('anyoneInStable')}</SelectItem>
+                    <SelectItem value="ALL_MEMBERS_INDIVIDUALLY">{tTasks('allMembersIndividually')}</SelectItem>
                     {jinetes.length > 0 ? jinetes.map(jinete => (
                       <SelectItem key={jinete.uid} value={jinete.uid}>{jinete.displayName}</SelectItem>
                     )) : <SelectItem value="no-jinetes" disabled>No hay miembros para asignación específica</SelectItem>}
@@ -543,8 +543,8 @@ export default function GestionTareasPage() {
           </CardTitle>
           <CardDescription>
             {filteredTasks.length === 0 
-              ? `No hay tareas programadas para ${format(selectedDate, "dd/MM/yyyy", { locale: es })}`
-              : `Mostrando ${filteredTasks.length} tarea${filteredTasks.length === 1 ? '' : 's'} para el día seleccionado`
+              ? tTasks('noTasksForSelectedDate') + " " + format(selectedDate, "dd/MM/yyyy", { locale: es })
+              : `${tTasks('showingTasks')} ${filteredTasks.length} ${filteredTasks.length === 1 ? tTasks('taskSingular') : tTasks('taskPlural')} ${tTasks('forSelectedDay')}`
             }
           </CardDescription>
         </CardHeader>

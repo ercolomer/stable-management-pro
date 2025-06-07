@@ -248,7 +248,7 @@ export default function JineteGestionTareasPage() {
     try {
       await deleteDoc(doc(db, "tasks", taskId));
       setTasks(tasks.filter(t => t.id !== taskId));
-      if(toast) toast({ title: tTasks('taskDeleted'), description: "La tarea ha sido eliminada." });
+      if(toast) toast({ title: tTasks('taskDeleted'), description: tTasks('taskHasBeenDeleted') });
     } catch (err: any) {
       console.error("Error al eliminar tarea:", err);
       if(toast) toast({ title: t('error'), description: `${tTasks('errorDeleting')} ${err.message || ''} Código: ${err.code || 'N/A'}`, variant: "destructive" });
@@ -297,7 +297,7 @@ export default function JineteGestionTareasPage() {
     }
     if (task.assignmentScope === 'ALL_MEMBERS_INDIVIDUALLY') return tTasks('allMembersIndividually');
     if (task.assignmentScope === 'ANYONE_IN_STABLE') return tTasks('anyoneInStable');
-    return "No asignada"; 
+    return tTasks('notAssigned'); 
   };
   
   const currentSelectValue = assignmentScope === 'SPECIFIC_USER' ? (assignedTo || "") : assignmentScope;
