@@ -3,27 +3,35 @@ import { cookies } from 'next/headers';
 import { translations, defaultLocale, type Locale } from './lib/translations';
 
 export default getRequestConfig(async () => {
-  // Obtener locale de las cookies
+  // Obtener locale de las cookies con múltiples intentos
   const cookieStore = await cookies();
-  const savedLocale = cookieStore.get('preferred-locale')?.value;
+  let savedLocale = cookieStore.get('preferred-locale')?.value;
   
-  // Validar y usar el locale
+  // También intentar leer de otros posibles nombres de cookie como backup
+  if (!savedLocale) {
+    savedLocale = cookieStore.get('locale')?.value;
+  }
+  
+  // Validar y usar el locale con validación más estricta
   let locale: Locale = defaultLocale;
-  if (savedLocale && (savedLocale === 'es' || savedLocale === 'en' || savedLocale === 'de')) {
+  const validLocales: Locale[] = ['es', 'en', 'de'];
+  
+  if (savedLocale && validLocales.includes(savedLocale as Locale)) {
     locale = savedLocale as Locale;
   }
   
-  // En producción, no logueamos para evitar ruido
+  // Log mejorado para debug en desarrollo
   if (process.env.NODE_ENV === 'development') {
     console.log(`[i18n] Idioma activo: ${locale} (cookie: ${savedLocale || 'ninguna'})`);
+    console.log(`[i18n] Cookies disponibles:`, cookieStore.getAll().map(c => `${c.name}=${c.value}`));
   }
 
-  // Usar traducciones estáticas
+  // Usar traducciones estáticas con validación
   const messages = translations[locale];
   
-  if (!messages) {
+  if (!messages || Object.keys(messages).length === 0) {
     if (process.env.NODE_ENV === 'development') {
-      console.error(`[i18n] ❌ Error: no hay mensajes para ${locale}`);
+      console.error(`[i18n] ❌ Error: no hay mensajes para ${locale}, usando fallback a ${defaultLocale}`);
     }
     return {
       locale: defaultLocale,

@@ -10,18 +10,25 @@ interface CookieOptions {
   sameSite?: 'strict' | 'lax' | 'none';
   path?: string;
   maxAge?: number;
+  domain?: string;
 }
 
 export function setCookie(name: string, value: string, options: CookieOptions = {}) {
   const isProduction = process.env.NODE_ENV === 'production';
+  const isFirebaseHosting = typeof window !== 'undefined' && window.location.hostname.includes('.web.app');
   
   const defaultOptions: CookieOptions = {
     path: '/',
     maxAge: COOKIE_MAX_AGE,
     sameSite: 'lax',
-    secure: isProduction, // Solo HTTPS en producción
+    secure: isProduction && !window.location.hostname.includes('localhost'), // HTTPS excepto localhost
     ...options
   };
+
+  // Para Firebase Hosting, no especificar domain para evitar problemas cross-domain
+  if (isFirebaseHosting) {
+    delete defaultOptions.domain;
+  }
 
   const cookieParts = [
     `${name}=${value}`,
@@ -38,14 +45,31 @@ export function setCookie(name: string, value: string, options: CookieOptions = 
     cookieParts.push('HttpOnly');
   }
 
+  if (defaultOptions.domain) {
+    cookieParts.push(`Domain=${defaultOptions.domain}`);
+  }
+
   return cookieParts.join('; ');
 }
 
 export function setLocaleCookie(locale: string) {
+  if (typeof document === 'undefined') {
+    return '';
+  }
+
+  // También guardar en localStorage como backup
+  try {
+    localStorage.setItem('preferred-locale', locale);
+  } catch (e) {
+    console.warn('No se pudo guardar en localStorage:', e);
+  }
+
   const cookieString = setCookie(COOKIE_NAME, locale);
+  document.cookie = cookieString;
   
-  if (typeof document !== 'undefined') {
-    document.cookie = cookieString;
+  // Log en desarrollo
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[Cookies] Configurando idioma: ${locale} -> ${cookieString}`);
   }
   
   return cookieString;
@@ -56,12 +80,25 @@ export function getLocaleCookie(): string | null {
     return null;
   }
   
+  // Primero intentar obtener de las cookies
   const cookies = document.cookie.split(';');
   for (const cookie of cookies) {
     const [name, value] = cookie.trim().split('=');
     if (name === COOKIE_NAME) {
       return value;
     }
+  }
+  
+  // Si no hay cookie, intentar obtener de localStorage como fallback
+  try {
+    const stored = localStorage.getItem('preferred-locale');
+    if (stored) {
+      // Si encontramos en localStorage, configurar la cookie también
+      setLocaleCookie(stored);
+      return stored;
+    }
+  } catch (e) {
+    console.warn('No se pudo leer de localStorage:', e);
   }
   
   return null;

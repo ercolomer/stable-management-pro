@@ -1,11 +1,15 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo } from "react";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import { Globe, ChevronDown, Check } from "lucide-react";
 import { useLanguage } from "@/contexts/language-context";
-import { useLocale } from "next-intl";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Languages, Check } from "lucide-react";
+import { useTranslations } from 'next-intl';
 
 const languages = [
   { code: 'es', name: 'Español', flag: '🇪🇸' },
@@ -13,123 +17,82 @@ const languages = [
   { code: 'de', name: 'Deutsch', flag: '🇩🇪' },
 ] as const;
 
-interface LanguageSelectorProps {
-  isCompact?: boolean;
-}
+export function LanguageSelector() {
+  const { locale, setLocale, isLoading } = useLanguage();
+  const t = useTranslations('navigation');
 
-export function LanguageSelector({ isCompact = false }: LanguageSelectorProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const { locale: contextLocale, setLocale, isLoading } = useLanguage();
-  const nextIntlLocale = useLocale();
+  const currentLanguage = languages.find(lang => lang.code === locale);
 
-  // Debug logging - usando useEffect para evitar logs en cada render
-  useEffect(() => {
-    console.log(`[LanguageSelector] 🔍 Mounted - contextLocale: ${contextLocale}, nextIntlLocale: ${nextIntlLocale}, isLoading: ${isLoading}`);
-  }, []); // Solo al montar
+  const handleLanguageChange = async (newLocale: 'es' | 'en' | 'de') => {
+    if (isLoading || newLocale === locale) return;
+    
+    // Log en desarrollo para debug
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[LanguageSelector] Cambiando de ${locale} a ${newLocale}`);
+    }
 
-  // Use nextIntlLocale as the source of truth
-  const currentLocale = nextIntlLocale || contextLocale;
-  
-  // Memoizar el idioma actual para evitar recálculos
-  const currentLanguage = useMemo(
-    () => languages.find(lang => lang.code === currentLocale) || languages[0],
-    [currentLocale]
-  );
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
+    // En producción, mostrar feedback visual inmediato
+    try {
+      await setLocale(newLocale);
+    } catch (error) {
+      console.error('[LanguageSelector] Error al cambiar idioma:', error);
+      
+      // Método fallback para Firebase Hosting
+      if (typeof window !== 'undefined') {
+        // Configurar cookie directamente
+        const isSecure = window.location.protocol === 'https:';
+        const cookieValue = `preferred-locale=${newLocale}; path=/; max-age=${60 * 60 * 24 * 365}; SameSite=lax${isSecure ? '; Secure' : ''}`;
+        document.cookie = cookieValue;
+        
+        // Guardar en localStorage también
+        localStorage.setItem('preferred-locale', newLocale);
+        
+        // Log para debug
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`[LanguageSelector] Cookie configurada directamente: ${cookieValue}`);
+        }
+        
+        // Recargar página
+        setTimeout(() => {
+          window.location.reload();
+        }, 200);
       }
     }
-
-    if (isOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => {
-        document.removeEventListener("mousedown", handleClickOutside);
-      };
-    }
-  }, [isOpen]);
-
-  const handleLanguageChange = (languageCode: string) => {
-    console.log(`[LanguageSelector] 🔄 Cambiando idioma a: ${languageCode}`);
-    
-    // Cerrar dropdown inmediatamente
-    setIsOpen(false);
-    
-    // Cambiar idioma solo si es diferente
-    if (languageCode !== currentLocale) {
-      setLocale(languageCode as 'es' | 'en' | 'de');
-    }
   };
-
-  const handleToggleDropdown = () => {
-    console.log(`[LanguageSelector] Toggling dropdown: ${!isOpen}`);
-    setIsOpen(!isOpen);
-  };
-
-  if (isLoading) {
-    return (
-      <Button
-        variant="outline"
-        size={isCompact ? "sm" : "default"}
-        disabled
-        className={cn(
-          "gap-2",
-          isCompact ? "h-8 px-2" : "h-10 px-3"
-        )}
-      >
-        <Globe className="h-4 w-4 animate-pulse" />
-        {!isCompact && <span>...</span>}
-      </Button>
-    );
-  }
 
   return (
-    <div className="relative" ref={dropdownRef}>
-      <Button
-        variant="outline"
-        size={isCompact ? "sm" : "default"}
-        onClick={handleToggleDropdown}
-        className={cn(
-          "gap-2",
-          isCompact ? "h-8 px-2" : "h-10 px-3"
-        )}
-        aria-label="Seleccionar idioma"
-        aria-expanded={isOpen}
-      >
-        <span className="text-base">{currentLanguage.flag}</span>
-        {!isCompact && (
-          <>
-            <span>{currentLanguage.name}</span>
-            <ChevronDown className={cn(
-              "h-4 w-4 transition-transform",
-              isOpen && "rotate-180"
-            )} />
-          </>
-        )}
-      </Button>
-
-      {isOpen && (
-        <div className="absolute right-0 top-full z-50 mt-1 w-40 rounded-md border bg-popover p-1 shadow-md animate-in fade-in-0 zoom-in-95">
-          {languages.map((language) => (
-            <button
-              key={language.code}
-              onClick={() => handleLanguageChange(language.code)}
-              className={cn(
-                "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground",
-                currentLocale === language.code && "bg-accent text-accent-foreground"
-              )}
-              aria-label={`Cambiar a ${language.name}`}
-            >
-              <span className="text-base">{language.flag}</span>
-              <span className="flex-1 text-left">{language.name}</span>
-              {currentLocale === language.code && <Check className="h-4 w-4" />}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className="h-9 w-9 p-0" 
+          disabled={isLoading}
+          title={t('changeLanguage')}
+        >
+          {isLoading ? (
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+          ) : (
+            currentLanguage?.flag || <Languages className="h-4 w-4" />
+          )}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-[120px]">
+        {languages.map((language) => (
+          <DropdownMenuItem
+            key={language.code}
+            onClick={() => handleLanguageChange(language.code)}
+            className="flex items-center gap-2 cursor-pointer"
+            disabled={isLoading}
+          >
+            <span className="text-lg">{language.flag}</span>
+            <span className="flex-1">{language.name}</span>
+            {locale === language.code && (
+              <Check className="h-4 w-4 text-primary" />
+            )}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
