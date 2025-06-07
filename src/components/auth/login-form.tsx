@@ -15,7 +15,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { getFirebaseAuth, isFirebaseInitialized } from "@/lib/firebase/config";
 import { LoaderCircle } from "lucide-react";
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/hooks/use-translations';
 import { LanguageSelector } from "@/components/language-selector";
 import { Separator } from "@/components/ui/separator";
 

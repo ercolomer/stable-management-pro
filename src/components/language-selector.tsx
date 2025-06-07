@@ -9,7 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Languages, Check } from "lucide-react";
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/hooks/use-translations';
 
 const languages = [
   { code: 'es', name: 'Español', flag: '🇪🇸' },

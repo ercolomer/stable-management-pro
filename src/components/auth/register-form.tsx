@@ -18,7 +18,7 @@ import type { UserProfile } from "@/types";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Loader2 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/hooks/use-translations';
 import { LanguageSelector } from "@/components/language-selector";
 import { useAuth } from "@/contexts/auth-context";
 

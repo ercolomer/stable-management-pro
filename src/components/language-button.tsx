@@ -1,7 +1,7 @@
 "use client";
 
 import { useLanguage } from '@/contexts/language-context';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/hooks/use-translations';
 import { Globe, RefreshCw } from 'lucide-react';
 
 export function LanguageButton() {

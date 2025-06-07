@@ -10,7 +10,7 @@ import { Loader2, Wand2, Lightbulb, AlertTriangle } from "lucide-react";
 // import { suggestTrainingPlanAction, type SuggestTrainingPlanActionState } from "@/app/training-plans/actions"; // Commented out for static export
 import { type SuggestTrainingPlanActionState } from "@/app/training-plans/actions";
 import { useToast } from "@/hooks/use-toast";
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/hooks/use-translations';
 
 export default function TrainingPlanForm() {
   const t = useTranslations('training');

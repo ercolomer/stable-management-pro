@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { LanguageSelector } from "@/components/language-selector";
 import { Loader2 } from "lucide-react";
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/hooks/use-translations';
 
 export default function HomePage() {
   const t = useTranslations('common');

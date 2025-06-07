@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, Copy, Check, Users, PawPrint, ListChecks, CalendarRange, AlertCircle, Lightbulb } from "lucide-react"; 
 import Link from "next/link";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/hooks/use-translations';
 import StableWrapper from "@/components/stable-wrapper";
 
 const CustomHorseIcon = (props: React.SVGProps<SVGSVGElement>) => (

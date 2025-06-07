@@ -1,6 +1,6 @@
 "use client"; // This page uses client-side components like TrainingPlanForm
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/hooks/use-translations';
 import TrainingPlanForm from "@/components/training/training-plan-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Lightbulb } from "lucide-react";

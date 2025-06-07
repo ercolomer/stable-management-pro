@@ -13,7 +13,7 @@ import { es, enUS, de } from "date-fns/locale";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/hooks/use-translations';
 import { useLanguage } from '@/contexts/language-context';
 
 // Icono de caballo personalizado

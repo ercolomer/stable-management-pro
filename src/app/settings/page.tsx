@@ -15,7 +15,7 @@ import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage
 import { Loader2, ShieldAlert, Trash2, UserCircle2, Save } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/hooks/use-translations';
 
 
 export default function SettingsPage() {

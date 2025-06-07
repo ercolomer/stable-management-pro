@@ -3,12 +3,10 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { ConditionalToaster } from "@/components/ui/conditional-toaster";
 import { LanguageProvider } from "@/contexts/language-context";
-import { NextIntlClientProvider } from 'next-intl';
 import { AuthProvider } from "@/contexts/auth-context";
 import AppLayout from "@/components/layout/app-layout";
-import { getMessages } from 'next-intl/server';
 import { cookies } from 'next/headers';
-import { type Locale } from '@/lib/translations';
+import { type Locale, defaultLocale } from '@/lib/translations';
 import ErrorBoundary from "@/components/error-boundary";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -115,25 +113,39 @@ export const viewport: Viewport = {
   ],
 };
 
+// Función para obtener el locale desde las cookies
+async function getLocaleFromCookies(): Promise<Locale> {
+  try {
+    const cookieStore = await cookies();
+    
+    // Intentar diferentes nombres de cookies
+    const cookieNames = ['NEXT_LOCALE', 'locale', 'preferred-locale'];
+    
+    for (const cookieName of cookieNames) {
+      const cookieValue = cookieStore.get(cookieName)?.value;
+      if (cookieValue && ['es', 'en', 'de'].includes(cookieValue)) {
+        console.log(`[RootLayout] Locale encontrado en cookie '${cookieName}': ${cookieValue}`);
+        return cookieValue as Locale;
+      }
+    }
+    
+    console.log(`[RootLayout] No se encontró locale en cookies, usando default: ${defaultLocale}`);
+    return defaultLocale;
+  } catch (error) {
+    console.error('[RootLayout] Error al leer cookies:', error);
+    return defaultLocale;
+  }
+}
+
 export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  // Obtener locale de las cookies - MISMO CÓDIGO QUE i18n.ts
-  const cookieStore = await cookies();
-  const savedLocale = cookieStore.get('preferred-locale')?.value;
+  // Obtener locale de las cookies usando nuestra función personalizada
+  const locale = await getLocaleFromCookies();
   
-  let locale: Locale = 'es';
-  if (savedLocale && (savedLocale === 'es' || savedLocale === 'en' || savedLocale === 'de')) {
-    locale = savedLocale as Locale;
-  }
-  
-  console.log(`[RootLayout] Locale detectado: ${locale} (cookie: ${savedLocale || 'ninguna'})`);
-  
-  // Obtener mensajes usando la configuración de i18n.ts
-  const messages = await getMessages();
-  console.log("[RootLayout] Messages loaded, sample keys:", Object.keys(messages).slice(0, 3));
+  console.log(`[RootLayout] Sistema personalizado inicializado con locale: ${locale}`);
 
   return (
     <html lang={locale} suppressHydrationWarning>
@@ -161,16 +173,14 @@ export default async function RootLayout({
       </head>
       <body className={inter.className}>
         <ErrorBoundary>
-          <NextIntlClientProvider messages={messages} locale={locale}>
-            <LanguageProvider>
-              <AuthProvider>
-                <AppLayout>
-                  {children}
-                  <ConditionalToaster />
-                </AppLayout>
-              </AuthProvider>
-            </LanguageProvider>
-          </NextIntlClientProvider>
+          <LanguageProvider>
+            <AuthProvider>
+              <AppLayout>
+                {children}
+                <ConditionalToaster />
+              </AppLayout>
+            </AuthProvider>
+          </LanguageProvider>
         </ErrorBoundary>
       </body>
     </html>

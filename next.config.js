@@ -1,8 +1,4 @@
 // @ts-check
-const createNextIntlPlugin = require('next-intl/plugin');
-
-// Configurar next-intl para que funcione sin rutas dinámicas
-const withNextIntl = createNextIntlPlugin('./src/i18n.ts');
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -53,4 +49,4 @@ const nextConfig = {
   output: process.env.NODE_ENV === 'production' ? 'standalone' : undefined,
 };
 
-module.exports = withNextIntl(nextConfig); 
+module.exports = nextConfig; 

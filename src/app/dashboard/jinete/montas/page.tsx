@@ -21,7 +21,7 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import Link from "next/link";
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/hooks/use-translations';
 
 // Icono de caballo personalizado
 const CustomHorseIcon = (props: React.SVGProps<SVGSVGElement>) => (

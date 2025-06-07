@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getDb } from "@/lib/firebase/config"; 
 import { doc, setDoc, Timestamp, updateDoc, arrayUnion, arrayRemove, writeBatch } from "firebase/firestore";
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/hooks/use-translations';
 
 
 export default function ProfilePage() {

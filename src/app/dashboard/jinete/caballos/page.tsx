@@ -21,7 +21,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { format, isSameDay, startOfDay } from "date-fns";
 import { es } from "date-fns/locale";
 import Link from "next/link";
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/hooks/use-translations';
 
 
 export default function JineteGestionCaballosPage() {
