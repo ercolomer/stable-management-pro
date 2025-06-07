@@ -35,10 +35,7 @@ export default function CalendarioCuadraPage() {
   const t = useTranslations('common');
   const tCalendar = useTranslations('calendar');
 
-  // Crear funciones estables de traducciones para evitar bucles
-  const getCalendarText = useCallback((key: string) => tCalendar(key), [tCalendar]);
-
-  // Determinar el locale para date-fns
+  // Determinar el locale para date-fns - función estable
   const getDateFnsLocale = useCallback(() => {
     switch (locale) {
       case 'en': return enUS;
@@ -60,53 +57,70 @@ export default function CalendarioCuadraPage() {
     setSelectedDate(startOfDay(new Date()));
   }, []);
 
+  // Función estable para obtener nombres de jinetes
+  const getJineteName = useCallback((uid: string | null | undefined) => {
+    if (!uid) return tCalendar('unknown');
+    const jinete = jinetes.find(j => j.uid === uid);
+    return jinete?.displayName || `${tCalendar('userId')}: ${uid.substring(0, 6)}...`;
+  }, [jinetes, tCalendar]);
+  
+  // Función estable para obtener texto de asignación de tareas
+  const getAssignedToTextForTask = useCallback((task: DailyTask) => {
+    if (task.assignmentScope === 'SPECIFIC_USER' && task.assignedTo) {
+      return getJineteName(task.assignedTo);
+    }
+    if (task.assignmentScope === 'ALL_MEMBERS_INDIVIDUALLY') return tCalendar('allIndividual');
+    if (task.assignmentScope === 'ANYONE_IN_STABLE') return tCalendar('anyone');
+    return tCalendar('unknown');
+  }, [getJineteName, tCalendar]);
+
   useEffect(() => {
     if (authLoading) return;
 
     const stableIdToUse = activeStableId;
 
     if (!stableIdToUse) {
-      setError(getCalendarText('noStableError'));
+      setError(tCalendar('noStableError'));
       setIsLoading(false);
       return;
     }
     
-    console.log(`[DEBUG] CalendarioCuadraPage - fetchData ${tCalendar('diagnostics')}:`);
-    console.log(`  ${tCalendar('authenticatedUser')}: ${userProfile?.uid || tCalendar('notLoadedProfile')}`);
-    console.log(`  ${tCalendar('queryingStable')} (stableIdToUse): ${stableIdToUse}`);
+    console.log(`[DEBUG] CalendarioCuadraPage - fetchData:`);
+    console.log(`  Authenticated user: ${userProfile?.uid || 'Profile not loaded'}`);
+    console.log(`  Querying stable (stableIdToUse): ${stableIdToUse}`);
 
-    console.log(`CalendarioCuadraPage - ${tCalendar('fetchingData')} stableId: ${stableIdToUse}`);
+    console.log(`CalendarioCuadraPage - Fetching data for stableId: ${stableIdToUse}`);
 
     const fetchData = async () => {
       setIsLoading(true);
       setError(null);
       
       try {
-        console.log(`CalendarioCuadraPage - ${tCalendar('fetchingDataFirestore')}`);
+        console.log(`CalendarioCuadraPage - Fetching data from Firestore`);
         
-        console.log(`CalendarioCuadraPage - ${tCalendar('queryingTasksCollection')}:`, { collection: "tasks", where: `stableId == ${stableIdToUse}` });
+        console.log(`CalendarioCuadraPage - Querying tasks collection:`, { collection: "tasks", where: `stableId == ${stableIdToUse}` });
         const tasksQuery = query(collection(db, "tasks"), where("stableId", "==", stableIdToUse));
         const tasksSnapshot = await getDocs(tasksQuery);
         setTasks(tasksSnapshot.docs.map(d => ({id: d.id, ...d.data(), assignmentScope: d.data().assignmentScope || (d.data().assignedTo ? 'SPECIFIC_USER' : 'ANYONE_IN_STABLE'), createdAt: (d.data().createdAt as Timestamp).toDate(), dueDate: d.data().dueDate ? (d.data().dueDate as Timestamp).toDate() : undefined, completedAt: d.data().completedAt ? (d.data().completedAt as Timestamp).toDate() : undefined } as DailyTask)));
         
-        console.log(`CalendarioCuadraPage - ${tCalendar('queryingAssignmentsCollection')}:`, { collection: "horseAssignments", where: `stableId == ${stableIdToUse}` });
+        console.log(`CalendarioCuadraPage - Querying assignments collection:`, { collection: "horseAssignments", where: `stableId == ${stableIdToUse}` });
         const assignmentsQuery = query(collection(db, "horseAssignments"), where("stableId", "==", stableIdToUse));
         const assignmentsSnapshot = await getDocs(assignmentsQuery);
         setAssignments(assignmentsSnapshot.docs.map(d => ({id: d.id, ...d.data(), date: (d.data().date as Timestamp).toDate(), createdAt: (d.data().createdAt as Timestamp)?.toDate() || new Date(), completedAt: d.data().completedAt ? (d.data().completedAt as Timestamp).toDate() : undefined } as HorseAssignment)));
         
-        console.log(`CalendarioCuadraPage - ${tCalendar('queryingHorsesCollection')}:`, { collection: "horses", where: `stableId == ${stableIdToUse}` });
+        console.log(`CalendarioCuadraPage - Querying horses collection:`, { collection: "horses", where: `stableId == ${stableIdToUse}` });
         const horsesQuery = query(collection(db, "horses"), where("stableId", "==", stableIdToUse));
         const horsesSnapshot = await getDocs(horsesQuery);
         setHorses(horsesSnapshot.docs.map(d => ({id: d.id, ...d.data(), entryDate: d.data().entryDate ? (d.data().entryDate as Timestamp).toDate() : undefined, exitDate: d.data().exitDate ? (d.data().exitDate as Timestamp).toDate() : undefined, farrierDueDate: d.data().farrierDueDate ? (d.data().farrierDueDate as Timestamp).toDate() : undefined, historicalStays: d.data().historicalStays?.map((s: any) => ({...s, entryDate: s.entryDate instanceof Timestamp ? s.entryDate.toDate() : new Date(s.entryDate), exitDate: s.exitDate ? (s.exitDate instanceof Timestamp ? s.exitDate.toDate() : new Date(s.exitDate)) : undefined })) || [] } as Horse)));
         
-        console.log(`CalendarioCuadraPage - ${tCalendar('queryingStableDocument')}:`, { path: `stables/${stableIdToUse}` });
+        console.log(`CalendarioCuadraPage - Querying stable document:`, { path: `stables/${stableIdToUse}` });
         const stableDocRef = doc(db, "stables", stableIdToUse);
         const stableDocSnap = await getDoc(stableDocRef);
         if (stableDocSnap.exists()) {
           const stableData = stableDocSnap.data() as Stable;
           const memberIds = stableData.members || [];
           if (memberIds.length > 0) {
-            console.log(`CalendarioCuadraPage - ${tCalendar('queryingUsersForMembers')}:`, { uids: memberIds });
+            console.log(`CalendarioCuadraPage - Querying users for members:`, { uids: memberIds });
             const usersQuery = query(collection(db, "users"), where("uid", "in", memberIds));
             const usersSnapshot = await getDocs(usersQuery);
             setJinetes(usersSnapshot.docs.map(d => d.data() as UserProfile));
@@ -117,13 +131,13 @@ export default function CalendarioCuadraPage() {
           setJinetes([]);
         }
       } catch (err: any) {
-        console.error(tCalendar('errorLoadingCalendarData'), err);
-        const errorMessage = `${getCalendarText('loadError')} ${err.message || ''} ${getCalendarText('errorCode')}: ${err.code || 'N/A'}`;
+        console.error('Error loading calendar data:', err);
+        const errorMessage = `${tCalendar('loadError')} ${err.message || ''} Code: ${err.code || 'N/A'}`;
         setError(errorMessage);
         if (toast) { 
             toast({ 
-              title: getCalendarText('loadErrorTitle'), 
-              description: `${getCalendarText('loadError')} ${getCalendarText('errorCode')}: ${err.code || 'N/A'}. ${getCalendarText('errorMessage')}: ${err.message || ''}`, 
+              title: tCalendar('loadErrorTitle'), 
+              description: `${tCalendar('loadError')} Code: ${err.code || 'N/A'}. Message: ${err.message || ''}`, 
               variant: "destructive", 
               duration: 7000
             });
@@ -139,23 +153,9 @@ export default function CalendarioCuadraPage() {
       setIsLoading(false);
     }
 
-  }, [userProfile, authLoading, activeStableId, toast, db, getCalendarText, tCalendar]);
+  }, [userProfile, authLoading, activeStableId, toast, db, tCalendar]);
 
-  const getJineteName = useCallback((uid: string | null | undefined) => {
-    if (!uid) return getCalendarText('unknown');
-    const jinete = jinetes.find(j => j.uid === uid);
-    return jinete?.displayName || `${getCalendarText('userId')}: ${uid.substring(0, 6)}...`;
-  }, [jinetes, getCalendarText]);
-  
-  const getAssignedToTextForTask = useCallback((task: DailyTask) => {
-    if (task.assignmentScope === 'SPECIFIC_USER' && task.assignedTo) {
-      return getJineteName(task.assignedTo);
-    }
-    if (task.assignmentScope === 'ALL_MEMBERS_INDIVIDUALLY') return getCalendarText('allIndividual');
-    if (task.assignmentScope === 'ANYONE_IN_STABLE') return getCalendarText('anyone');
-    return getCalendarText('unknown');
-  }, [getJineteName, getCalendarText]);
-
+  // UseMemo para actividades del día seleccionado - ELIMINAMOS dependencias problemáticas
   const activitiesForSelectedDate = useMemo(() => {
     if (!selectedDate) return { dailyTasks: [], dailyAssignments: [], horseEvents: [] };
 
@@ -178,29 +178,30 @@ export default function CalendarioCuadraPage() {
       const horseFarrierDate = horse.farrierDueDate ? startOfDay(horse.farrierDueDate instanceof Timestamp ? horse.farrierDueDate.toDate() : new Date(horse.farrierDueDate)) : null;
 
       if (horseEntryDate && isSameDay(horseEntryDate, sDate)) {
-        horseEvents.push({ type: getCalendarText('mainEntry'), horseName: horse.name, date: horseEntryDate });
+        horseEvents.push({ type: tCalendar('mainEntry'), horseName: horse.name, date: horseEntryDate });
       }
       if (horseExitDate && isSameDay(horseExitDate, sDate)) {
-        horseEvents.push({ type: getCalendarText('mainExit'), horseName: horse.name, date: horseExitDate });
+        horseEvents.push({ type: tCalendar('mainExit'), horseName: horse.name, date: horseExitDate });
       }
       if (horseFarrierDate && isSameDay(horseFarrierDate, sDate)) {
-        horseEvents.push({ type: getCalendarText('farrierAppointment'), horseName: horse.name, date: horseFarrierDate });
+        horseEvents.push({ type: tCalendar('farrierAppointment'), horseName: horse.name, date: horseFarrierDate });
       }
       horse.historicalStays?.forEach(stay => {
         const stayEntry = startOfDay(stay.entryDate instanceof Timestamp ? stay.entryDate.toDate() : new Date(stay.entryDate));
         const stayExit = stay.exitDate ? startOfDay(stay.exitDate instanceof Timestamp ? stay.exitDate.toDate() : new Date(stay.exitDate)) : null;
         if (isSameDay(stayEntry, sDate)) {
-          horseEvents.push({ type: getCalendarText('historicalEntry'), horseName: horse.name, date: stayEntry, notes: stay.notes });
+          horseEvents.push({ type: tCalendar('historicalEntry'), horseName: horse.name, date: stayEntry, notes: stay.notes });
         }
         if (stayExit && isSameDay(stayExit, sDate)) {
-          horseEvents.push({ type: getCalendarText('historicalExit'), horseName: horse.name, date: stayExit, notes: stay.notes });
+          horseEvents.push({ type: tCalendar('historicalExit'), horseName: horse.name, date: stayExit, notes: stay.notes });
         }
       });
     });
 
     return { dailyTasks, dailyAssignments, horseEvents };
-  }, [selectedDate, tasks, assignments, horses, getCalendarText]); 
+  }, [selectedDate, tasks, assignments, horses, tCalendar]); 
   
+  // UseMemo para modificadores del calendario - SOLO dependencias de datos
   const calendarModifiers = useMemo(() => {
     const eventDays = new Set<string>();
     
