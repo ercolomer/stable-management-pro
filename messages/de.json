@@ -106,7 +106,8 @@
     "myProfileStable": "Mein Profil / Stall",
     "switchAccount": "Konto wechseln",
     "unlinkAccount": "Dieses Konto vom Selector entfernen",
-    "addAnotherAccount": "Weiteres Konto hinzufügen"
+    "addAnotherAccount": "Weiteres Konto hinzufügen",
+    "changeLanguage": "Sprache ändern"
   },
   "dashboard": {
     "title": "Dashboard",

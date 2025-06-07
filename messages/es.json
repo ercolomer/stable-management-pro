@@ -106,7 +106,8 @@
     "myProfileStable": "Mi Perfil / Cuadra",
     "switchAccount": "Cambiar Cuenta",
     "unlinkAccount": "Desvincular esta cuenta del selector",
-    "addAnotherAccount": "Añadir otra cuenta"
+    "addAnotherAccount": "Añadir otra cuenta",
+    "changeLanguage": "Cambiar idioma"
   },
   "dashboard": {
     "title": "Panel de Control",

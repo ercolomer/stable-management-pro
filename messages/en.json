@@ -106,7 +106,8 @@
     "myProfileStable": "My Profile / Stable",
     "switchAccount": "Switch Account",
     "unlinkAccount": "Unlink this account from selector",
-    "addAnotherAccount": "Add another account"
+    "addAnotherAccount": "Add another account",
+    "changeLanguage": "Change language"
   },
   "dashboard": {
     "title": "Dashboard",
