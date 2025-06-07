@@ -381,16 +381,16 @@ export default function GestionTareasPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <CalendarIcon className="h-6 w-6" />
-            Filtrar Tareas por Día
+            {tTasks('filterByDay')}
           </CardTitle>
           <CardDescription>
-            Selecciona un día para ver solo las tareas programadas para esa fecha
+            {tTasks('selectDayToFilter')}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
             <div className="flex-1">
-              <Label htmlFor="dateFilter">Fecha Seleccionada</Label>
+                              <Label htmlFor="dateFilter">{tTasks('selectedDate')}</Label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
@@ -416,7 +416,7 @@ export default function GestionTareasPage() {
             {/* Estadísticas del día */}
             <div className="flex gap-2 flex-wrap">
               <div className="bg-blue-50 dark:bg-blue-900/30 px-3 py-1 rounded-lg text-sm">
-                <span className="font-medium text-blue-700 dark:text-blue-300">Total: {dayStats.total}</span>
+                <span className="font-medium text-blue-700 dark:text-blue-300">{tTasks('totalColon')} {dayStats.total}</span>
               </div>
               <div className="bg-green-50 dark:bg-green-900/30 px-3 py-1 rounded-lg text-sm">
                 <span className="font-medium text-green-700 dark:text-green-300">Completadas: {dayStats.completed}</span>
@@ -500,12 +500,12 @@ export default function GestionTareasPage() {
                     <SelectItem value="ALL_MEMBERS_INDIVIDUALLY">{tTasks('allMembersIndividually')}</SelectItem>
                     {jinetes.length > 0 ? jinetes.map(jinete => (
                       <SelectItem key={jinete.uid} value={jinete.uid}>{jinete.displayName}</SelectItem>
-                    )) : <SelectItem value="no-jinetes" disabled>No hay miembros para asignación específica</SelectItem>}
+                    )) : <SelectItem value="no-jinetes" disabled>{tTasks('noMembersForAssignment')}</SelectItem>}
                   </SelectContent>
                 </Select>
               </div>
               <div>
-                <Label htmlFor="dueDateJefeTareas">Fecha de Entrega (Opcional)</Label>
+                <Label htmlFor="dueDateJefeTareas">{tTasks('dueDate')} ({t('optional')})</Label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
@@ -515,7 +515,7 @@ export default function GestionTareasPage() {
                       disabled={isSubmitting}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {dueDate ? format(dueDate, "PPP", { locale: es }) : <span>Selecciona una fecha</span>}
+                                              {dueDate ? format(dueDate, "PPP", { locale: es }) : <span>{t('selectDate')}</span>}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0">
@@ -529,7 +529,7 @@ export default function GestionTareasPage() {
             {editingTask && <Button type="button" variant="outline" onClick={resetForm} disabled={isSubmitting}>Cancelar Edición</Button>}
             <Button type="submit" disabled={isSubmitting}>
               <Loader2 className={`mr-2 h-4 w-4 animate-spin ${isSubmitting ? 'opacity-100' : 'opacity-0 w-0 mr-0'}`} />
-              {editingTask ? "Guardar Cambios" : "Crear Tarea"}
+{editingTask ? t('saveChanges') : tTasks('createTask')}
             </Button>
           </CardFooter>
         </form>
@@ -552,22 +552,22 @@ export default function GestionTareasPage() {
         { isLoading ? (<div className="flex justify-center items-center p-8"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>) :
           filteredTasks.length === 0 ? (
             <div className="text-center py-8 space-y-2">
-              <p className="text-muted-foreground">No hay tareas programadas para este día.</p>
+              <p className="text-muted-foreground">{tTasks('noTasksForSelectedDate')}</p>
               <p className="text-sm text-muted-foreground">
-                Puedes crear una nueva tarea arriba o seleccionar otro día en el filtro.
+                {tTasks('canCreateNewTask')}
               </p>
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[50px]">Estado</TableHead>
-                  <TableHead>Descripción</TableHead>
-                  <TableHead>Sugerida a</TableHead>
-                  <TableHead>Completada por</TableHead>
-                  <TableHead>Fecha Límite</TableHead>
-                  <TableHead>Creada</TableHead>
-                  <TableHead className="text-right">Acciones</TableHead>
+                  <TableHead className="w-[50px]">{tTasks('status')}</TableHead>
+                  <TableHead>{t('description')}</TableHead>
+                  <TableHead>{tTasks('suggestedTo')}</TableHead>
+                  <TableHead>{tTasks('completedBy')}</TableHead>
+                  <TableHead>{tTasks('dueDate')}</TableHead>
+                  <TableHead>{tTasks('created')}</TableHead>
+                  <TableHead className="text-right">{t('actions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

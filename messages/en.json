@@ -718,7 +718,19 @@
     "noRidesForDay": "No rides scheduled for this day.",
     "horseEvents": "Horse Events",
     "noHorseEventsForDay": "No entries, exits or farrier appointments for this day.",
-    "selectDayToView": "Select a day on the calendar to view details."
+    "selectDayToView": "Select a day on the calendar to view details.",
+    "diagnostics": "Diagnostics",
+    "authenticatedUser": "Authenticated User UID",
+    "notLoadedProfile": "N/A (profile not loaded)",
+    "queryingStable": "Querying for Stable ID",
+    "fetchingData": "Fetching data for",
+    "fetchingDataFirestore": "Fetching data from Firestore",
+    "queryingTasksCollection": "Querying tasks collection",
+    "queryingAssignmentsCollection": "Querying horseAssignments collection",
+    "queryingHorsesCollection": "Querying horses collection",
+    "queryingStableDocument": "Querying stable document",
+    "queryingUsersForMembers": "Querying users collection for members",
+    "errorLoadingCalendarData": "Error loading data for the calendar"
   },
   "errors": {
     "userNotAuthenticatedWithRole": "User authenticated but without defined role.",

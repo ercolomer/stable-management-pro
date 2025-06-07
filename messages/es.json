@@ -728,7 +728,19 @@
     "noRidesForDay": "No hay montas programadas para este día.",
     "horseEvents": "Eventos de Caballos",
     "noHorseEventsForDay": "No hay ingresos, salidas o citas de herrador para este día.",
-    "selectDayToView": "Selecciona un día en el calendario para ver los detalles."
+    "selectDayToView": "Selecciona un día en el calendario para ver los detalles.",
+    "diagnostics": "Diagnósticos",
+    "authenticatedUser": "UID del Usuario Autenticado",
+    "notLoadedProfile": "N/A (perfil no cargado)",
+    "queryingStable": "Consultando para Cuadra ID",
+    "fetchingData": "Obteniendo datos para",
+    "fetchingDataFirestore": "Obteniendo datos de Firestore",
+    "queryingTasksCollection": "Consultando colección de tareas",
+    "queryingAssignmentsCollection": "Consultando colección de asignaciones de caballos",
+    "queryingHorsesCollection": "Consultando colección de caballos",
+    "queryingStableDocument": "Consultando documento de cuadra",
+    "queryingUsersForMembers": "Consultando colección de usuarios para miembros",
+    "errorLoadingCalendarData": "Error al cargar datos para el calendario"
   },
   "stable": {
     "title": "Cuadra",

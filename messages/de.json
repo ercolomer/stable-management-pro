@@ -721,7 +721,19 @@
     "noRidesForDay": "Keine Ritte für diesen Tag geplant.",
     "horseEvents": "Pferdeereignisse",
     "noHorseEventsForDay": "Keine Ein- oder Ausgänge oder Hufschmied-Termine für diesen Tag.",
-    "selectDayToView": "Wählen Sie einen Tag im Kalender aus, um Details anzuzeigen."
+    "selectDayToView": "Wählen Sie einen Tag im Kalender aus, um Details anzuzeigen.",
+    "diagnostics": "Diagnose",
+    "authenticatedUser": "Authentifizierte Benutzer-UID",
+    "notLoadedProfile": "N/A (Profil nicht geladen)",
+    "queryingStable": "Abfrage für Stall-ID",
+    "fetchingData": "Daten abrufen für",
+    "fetchingDataFirestore": "Daten von Firestore abrufen",
+    "queryingTasksCollection": "Aufgaben-Sammlung abfragen",
+    "queryingAssignmentsCollection": "Pferdezuweisungs-Sammlung abfragen",
+    "queryingHorsesCollection": "Pferde-Sammlung abfragen",
+    "queryingStableDocument": "Stall-Dokument abfragen",
+    "queryingUsersForMembers": "Benutzer-Sammlung für Mitglieder abfragen",
+    "errorLoadingCalendarData": "Fehler beim Laden der Kalenderdaten"
   },
   "errors": {
     "userNotAuthenticatedWithRole": "Benutzer authentifiziert, aber ohne definierte Rolle.",

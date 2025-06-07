@@ -326,16 +326,16 @@ export default function GestionMontasPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <CalendarIcon className="h-6 w-6" />
-            Filtrar Montas por Día
+            {tRides('filterByDay')}
           </CardTitle>
           <CardDescription>
-            Selecciona un día para ver solo las montas programadas para esa fecha
+            {tRides('selectDayToFilterRides')}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
             <div className="flex-1">
-              <Label htmlFor="dateFilterMontas">Fecha Seleccionada</Label>
+                              <Label htmlFor="dateFilterMontas">{tRides('selectedDate')}</Label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
@@ -361,7 +361,7 @@ export default function GestionMontasPage() {
             {/* Estadísticas del día */}
             <div className="flex gap-2 flex-wrap">
               <div className="bg-blue-50 dark:bg-blue-900/30 px-3 py-1 rounded-lg text-sm">
-                <span className="font-medium text-blue-700 dark:text-blue-300">Total: {dayStats.total}</span>
+                <span className="font-medium text-blue-700 dark:text-blue-300">{tRides('totalRides')}: {dayStats.total}</span>
               </div>
               <div className="bg-green-50 dark:bg-green-900/30 px-3 py-1 rounded-lg text-sm">
                 <span className="font-medium text-green-700 dark:text-green-300">Completadas: {dayStats.completed}</span>
@@ -412,7 +412,7 @@ export default function GestionMontasPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <PlusCircle className="h-6 w-6" />
-            {editingAssignment ? "Editar Monta" : "Nueva Asignación de Monta"}
+{editingAssignment ? tRides('editRide') : tRides('addNewRide')}
           </CardTitle>
           <CardDescription>
             {editingAssignment ? "Modifica los detalles de la monta." : "Asigna jinetes a caballos para montas específicas."}
